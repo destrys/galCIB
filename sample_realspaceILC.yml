@@ -1,0 +1,63 @@
+output_dir: 'output/'
+output_prefix: 'realspaceILC'   # the prefix for all the files that will be saved
+save_weights: 'no'                        # set to yes to save the weight maps
+
+ELLMAX: 6192
+wavelet_type: 'TaperedTopHats'
+N_scales: 2
+ellmin: 0
+ellboundaries: [2500] # split at high ell to avoid numerical instabilities
+taperwidths: [100]
+
+N_freqs: 2
+bandpass_type: 'DeltaBandpasses'   
+freqs_delta_ghz: ["None",353]
+
+
+# the files where you have saved the frequency maps
+freq_map_files: [
+        '//mnt/home/fmccarthy/ceph//HI4PI/maps_galcoords/HI4PI_MOM0_GAL_1_1024.fits',
+'/mnt/home/fmccarthy/ceph//Planck/frequency_maps/PR4/HFI_SkyMap_353-BPassCorrected_2048_R4.00_full.fits']
+
+
+#the maps we will subtract from the input frequency maps before any computations. This list has to be of length N_Freqs and each entry can be a filename, a list of filenames, or the string "None":
+maps_to_subtract: ["None",
+["dipole_CMB_n4096_K.fits",'needletILCmap_component_CMB_K.fits']] 
+#if you are working at a higher frequency than 353 Ghz, you can remove the CMB estimation:
+#maps_to_subtract: ["None","dipole_CMB_n4096_K.fits"]
+
+beam_type: 'Gaussians'
+beam_FWHM_arcmin: [4.92,4.92]
+N_side: 2048
+
+ILC_preserved_comp: 'CMB'
+N_deproj: 0
+ILC_deproj_comps: []
+N_SED_params: 0
+SED_params: []
+SED_params_vals: []
+SED_params_priors: []
+SED_params_priors_params: []
+
+N_maps_xcorr: 0
+
+
+override_N_freqs_to_use: [2,1]
+
+
+weights_from_covmat: 'true'
+
+
+override_ILCbiastol_threshold: 'true'
+
+
+subtract_mean: ['monopole','monopole']  # this is the part that tells pyilc to remove the monopole of each single-frequency map. It is a list with length N_freqs.
+
+subtract_means_before_sums: [1,0] # this is the part that tells pyilc to remove the mean on the domain before doing the ILC. There needs to be one entry in this list for each N_scales.
+
+
+allow_dgrading: 'true'
+FHWM_pix: [0.5116633539732443,0.5116633539732443] #the size of the real-space kernels for the ILC at each scale
+
+mask_before_covariance_computation: ['//mnt/home/fmccarthy/ceph///Planck/Masks/HFI_Mask_GalPlane-apo0_2048_R2.00.fits',4] #this is where you put in the mask you want to calculate on! the first entry is the mask file and the second entry is the field of the fits file you want to read.
+save_as: 'fits'
