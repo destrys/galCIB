@@ -6,8 +6,12 @@ Last Updated: 4 September 2024
 """
 
 from scipy.integrate import simpson
+#from astropy import constants as const
+import consts
 
-def B(nu, T):
+z = consts.zrange # redshift bin of galaxies 
+
+def B(nu, T): #DONE
     """
     Returns Plancks blackbody function as a function
     of freq nu and temperature T.
@@ -17,7 +21,6 @@ def B(nu, T):
     exp_term = 1/(np.exp((planck_const_h * nu)/(boltzmann_kb * T))-1)
     return const_term * nu**3 * exp_term
     
-
 def Theta(nu, z, beta, Td, gamma):
     """
     Returns the SED model of CIB-emitting haloes
@@ -38,15 +41,27 @@ def Theta(nu, z, beta, Td, gamma):
     
     return res 
 
-def shang12(L0, z):
+def Sigma(M, sigma_LM, Meff):
+    """
+    Returns the Luminosity-Mass relationship 
+    """
+    
+    first_term = M/np.sqrt(2 * np.pi * sigma_LM**2)
+    exp_term = (np.log10(M) - np.log10(Meff))/sigma_LM ##FIXME: 2023 paper and Serra 2014 differ slightly
+    
+    return first_term * np.exp(-0.5 * exp_term**2)
+    
+
+def shang12(z, nu, L0, M, sigma_LM, Meff, beta, Td, gamma):
     """
     Returns the specific IR luminosity at frequency nu
     using the Shang et al. 2012 (1109.1522) model.
     """
     
-    res = L0 * (1 + z)**(3.6) * Sigma(M) * Theta ((1+z) * nu)
+    Sigma_M = Sigma(M, sigma_LM, Meff)
+    Theta_nu = Theta ((1+z) * nu, beta, Td, gamma)
+    res = L0 * (1 + z)**(3.6) * Sigma_M * Theta_nu
     return res
-    return 0 #FIXME
 
 def L_nuprime_z(M, z, model_name):
     """"
@@ -54,6 +69,10 @@ def L_nuprime_z(M, z, model_name):
     """
     
     # call specific model and return value 
+    if model_name == 'S12':
+        return shang12(z, nu, L0, M, 
+                       sigma_LM, Meff, beta, 
+                       Td, gamma)
     return 0 #FIXME
     
 
@@ -75,35 +94,70 @@ def j_nuprime_z(nu, z, dM):
     return 0 #FIXME
 
 
-def cib_halo():
+def W_cib():
+    """
+    Returns redshift kernel of CIB field
+    """
+    outp = 1/(1 + z)
+    return j_nuprime_z(nu, z, dM) * outp
+    
+def W_gal(b_gal):
+    """
+    Returns redshift kernel of galaxy field
+    """
+    
+    gal_bias_term = b_gal * pz 
+    mag_bias_term = 3 * consts.OmegaM/(2 * consts.speed_of_light)
+    mag_bias_term *= consts.H0**2/consts.Hz * (1 +z) * consts.chi
+    
+    mag_bias_integrand =
+    mag_bias_integrated_term = simpson(y = mag_bias_integrand, x = )
+    mag_bias_term *= mag_bias_integrated_term
+    
+    return gal_bias_term + mag_bias_term
     
     
+def cibXgal_cell_2h(W_cib, W_gal, P_cibXgal):
+    
+    """
+    Returns C_ell of 2-halo terms 
+    """
+    
+    dchi = z # integrating over dchi 
+    integrand = 1/consts.chi**2
+    integrand *= W_cib * W_gal 
+    integrand *= P_cibXgal
+    
+    C_ell_2h = simpson(y = integrand, x = dchi)
+    
+    return C_ell_2h
+       
 
-def cibXgal_pk_2h(Pmm):
-    """
-    Returns the theory cross Pk of CIB and galaxy
+# def cibXgal_pk_2h(Pmm):
+#     """
+#     Returns the theory cross Pk of CIB and galaxy
     
-    Arguments
-    ---------
-        Pmm : linear matter power spectrum
-    """
+#     Arguments
+#     ---------
+#         Pmm : linear matter power spectrum
+#     """
     
-    bias_gal
-    bias_CIB
+#     bias_gal
+#     bias_CIB
     
-    P_cibXgal = bias_gal * bias_CIB * Pmm 
+#     P_cibXgal = bias_gal * bias_CIB * Pmm 
 
-def cibXgal_cell_2h():
-    """"
-    Returns the theory cross C_ell of CIB and galaxy
-    """
+# def cibXgal_cell_2h():
+#     """"
+#     Returns the theory cross C_ell of CIB and galaxy
+#     """
     
-    ucen = 
-    unfw = 
-    power = 
-    w1w2 = 
-    geo = 
-    fact = 
-    rest = 
+#     ucen = 
+#     unfw = 
+#     power = 
+#     w1w2 = 
+#     geo = 
+#     fact = 
+#     rest = 
     
     
