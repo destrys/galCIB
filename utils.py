@@ -9,8 +9,10 @@ from scipy.integrate import simpson
 #from astropy import constants as const
 import consts
 
-z = consts.zrange.values # redshift bin of galaxies 
-pz = consts.pz.values # dndz values 
+OmegaM = consts.OmegaM
+c = consts.speed_of_light
+H0 = consts.H0
+dict_ELG = consts.dict_gal['ELG']
 
 def B(nu, T): #DONE
     """
@@ -101,14 +103,19 @@ def W_cib():
     """
     outp = 1/(1 + z)
     return j_nuprime_z(nu, z, dM) * outp
-    
-def W_gal(b_gal, pz = pz, z = z, 
-          mag_bias_alpha = 2.225):
+
+def W_gal(b_gal, dict_gal = dict_ELG):
     """
     Returns redshift kernel of galaxy field
     """
     
-    gal_bias_term = b_gal * pz 
+    z = dict_gal['z']
+    pz = dict_gal['pz']
+    chi = dict_gal['chi']
+    Hz = dict_gal['Hz']
+    mag_bias_alpha = dict_gal['mag_bias_alpha']
+    
+    gal_bias_term = b_gal * pz
     
     mag_bias_prefact = 3 * OmegaM/(2 * c)
     mag_bias_prefact = (mag_bias_prefact * H0**2/Hz * (1 +z) * chi).decompose() # to reduce to the same unit
