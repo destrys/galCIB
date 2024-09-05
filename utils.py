@@ -9,7 +9,8 @@ from scipy.integrate import simpson
 #from astropy import constants as const
 import consts
 
-z = consts.zrange # redshift bin of galaxies 
+z = consts.zrange.values # redshift bin of galaxies 
+pz = consts.pz.values # dndz values 
 
 def B(nu, T): #DONE
     """
@@ -101,19 +102,30 @@ def W_cib():
     outp = 1/(1 + z)
     return j_nuprime_z(nu, z, dM) * outp
     
-def W_gal(b_gal):
+def W_gal(b_gal, pz = pz, z = z, 
+          mag_bias_alpha = 2.225):
     """
     Returns redshift kernel of galaxy field
     """
     
     gal_bias_term = b_gal * pz 
-    mag_bias_term = 3 * consts.OmegaM/(2 * consts.speed_of_light)
-    mag_bias_term *= consts.H0**2/consts.Hz * (1 +z) * consts.chi
     
-    mag_bias_integrand =
-    mag_bias_integrated_term = simpson(y = mag_bias_integrand, x = )
-    mag_bias_term *= mag_bias_integrated_term
+    mag_bias_prefact = 3 * OmegaM/(2 * c)
+    mag_bias_prefact = (mag_bias_prefact * H0**2/Hz * (1 +z) * chi).decompose() # to reduce to the same unit
     
+    integrated_values = np.zeros_like(z)
+    for i in range(len(z)): # loop over to get integrand values 
+      zspecific_indx = i
+      
+      # only consider bins above the specific index 
+      flag = (z >= z[zspecific_indx])
+      ratio = chi[zspecific_indx]/chi[flag]
+      
+      # assuming constant alpha over z 
+      integrand_term = (1 - ratio) * (mag_bias_alpha - 1) * pz[flag]
+      integrated_values[i] = simpson(y = integrand_term, x = z[flag])
+  
+    mag_bias_term = mag_bias_prefact * integrated_values
     return gal_bias_term + mag_bias_term
     
     
