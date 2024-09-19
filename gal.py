@@ -84,22 +84,30 @@ def Nsat(Mh, As = As, M0 = M0,
     return As * power_term**alpha
 
 def nbar_gal(Ncen, Nsat, Mh, HMFz):
+    
+def galterm_Pk(Ncen, Nsat, unfw): #FIXME: needs testing
     """
-    Returns the average galaxy number density.
+    Returns the second bracket in A13 of 2204.05299.
+    This corresponds to the galaxy term in calculating Pk.
     
     Args:
-        Ncen : num. of central gal. inside halo (Mh, z)
-        Nsat : num. of sat. gal. inside halo (Mh, z)
-        Mh : halo mass bins
-        HMFz : halo mass function (z, Mh)
-        
+        Ncen : num. of central galaxies inside a given halo (Mh X z)
+        Nsat : num. of sat. galaxies inside a given halo (Mh X z)
+        unfw : Fourier transform the NFW profile inside the halo. 
+               Shape is num of modes X num of Halo mass func bins X num of redshifts
+    
     Returns:
-        nbar : gal. num. density per z 
+        res : shape (k X Mh X z)
     """
     
-    Ntot = Ncen + Nsat
-    dlog10Mh = np.diff(np.log10(Mh))[0]
-    integrand = HMFz * Ntot
-    res = simpson(integrand, dx = dlog10Mh)
+    assert Ncen.shape()[0] == 2, "Ncen must be of shape (Mh X z)"
+    assert Nsat.shape()[0] == 2, "Nsat must be of shape (Mh X z)"
+    assert unfw.shape()[0] == 3, "unfw profile must be of shape (k X Mh X z)"
     
-    return res   
+    #reshape to include k dimension to multiply with unfw
+    Nsat = Nsat[np.newaxis, :, :] 
+    Ncen = Ncen[np.newaxis, :, :]
+    res = Nsat * unfw 
+    res = Ncen + res 
+    
+    return res 

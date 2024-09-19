@@ -13,6 +13,7 @@ OmegaM = consts.OmegaM
 c = consts.speed_of_light
 H0 = consts.H0
 dict_ELG = consts.dict_gal['ELG']
+Plin = consts.Plin
 
 def B(nu, T): #DONE
     """
@@ -97,14 +98,14 @@ def j_nuprime_z(nu, z, dM):
     return 0 #FIXME
 
 
-def W_cib():
+def W_cib(): #DONE
     """
     Returns redshift kernel of CIB field
     """
     outp = 1/(1 + z)
     return j_nuprime_z(nu, z, dM) * outp
 
-def W_gal(b_gal, dict_gal = dict_ELG):
+def W_gal(b_gal, dict_gal = dict_ELG): #DONE
     """
     Returns redshift kernel of galaxy field
     """
@@ -136,47 +137,82 @@ def W_gal(b_gal, dict_gal = dict_ELG):
     return gal_bias_term + mag_bias_term
     
     
-def cibXgal_cell_2h(W_cib, W_gal, P_cibXgal):
+def cibterm(djc_dlogMh, djs_dlogMh, unfw): #FIXME: needs testing
+    """
+    Returns the first bracket in A13 of 2204.05299.
+    This corresponds to the CIB term in calculating Pk. 
+    
+    Args:
+        djc_dlogMh : Specific emissivity of central galaxies (Mh, z)
+        djs_dlogMh : Specific emissivity of sat galaxies (Mh, z)
+        unfw : Fourier transform the NFW profile inside the halo. 
+               Shape is num of modes X num of Halo mass func bins X num of redshifts
+
+    Returns:
+        res : shape (k, Mh, z)
+    """
+    
+    #reshape to include k dimension to multiply with unfw
+    djs_dlogMh = djs_dlogMh[np.newaxis, :, :]
+    djc_dlogMh = djc_dlogMh[np.newaxis, :, :]
+    
+    res = djs_dlogMh * unfw
+    res = res + djc_dlogMh
+    
+    return res
+    
+    
+
+    
+    
+def jbar(nu, djc_dlogMh, djs_dlogMh, Mh, HMFz): #FIXME: needs testing; precalculate?
+    """
+    Returns total emissivity A8 of 2204.05299.
+    
+    Args:
+        nu : measurement frequency
+    """
+    
+    dj_dlogMh = djc_dlogMh + djs_dlogMh
+    dlog10Mh = np.diff(np.log10(Mh))
+    integrand = HMFz * dj_dlogMh
+    
+    res = simpson(integrand, dx = dlog10Mh)
+    
+    return res 
+    
+    
+    
+
+def P_cibXgal_1h():
+    """
+    Returns the 1-halo power spectrum 
+    """
+    
+    integrand = HMFz * cibterm * galterm #HMFz = halo mass func (z)
+    res = simpson(integrand, x = np.log10(Mh))
+    res = res/(nbar_gal * jbar)
+    
+    return res 
+
+def P_cibXgal_2h(): #func of k,z,nu?, 
+    prefact = Plin/(nbar_gal() * jbar(nu)) #FIXME: what is nbar_gal and j_nu? 
+    
+    
+def cibXgal_cell_2h(W_cib, W_gal, P_cibXgal, dict_gal = dict_ELG):
     
     """
     Returns C_ell of 2-halo terms 
     """
     
-    dchi = z # integrating over dchi 
-    integrand = 1/consts.chi**2
-    integrand *= W_cib * W_gal 
-    integrand *= P_cibXgal
+    chi = dict_ELG['chi']
+    z = dict_ELG['z']
     
-    C_ell_2h = simpson(y = integrand, x = dchi)
+    dz = z # integrating over redshift 
+    integrand_prefact = 1/chi**2
+    integrand = integrand_prefact * W_cib * W_gal 
+    integrand = integrand * P_cibXgal
+    
+    C_ell_2h = simpson(y = integrand, x = dz)
     
     return C_ell_2h
-       
-
-# def cibXgal_pk_2h(Pmm):
-#     """
-#     Returns the theory cross Pk of CIB and galaxy
-    
-#     Arguments
-#     ---------
-#         Pmm : linear matter power spectrum
-#     """
-    
-#     bias_gal
-#     bias_CIB
-    
-#     P_cibXgal = bias_gal * bias_CIB * Pmm 
-
-# def cibXgal_cell_2h():
-#     """"
-#     Returns the theory cross C_ell of CIB and galaxy
-#     """
-    
-#     ucen = 
-#     unfw = 
-#     power = 
-#     w1w2 = 
-#     geo = 
-#     fact = 
-#     rest = 
-    
-    
