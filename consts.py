@@ -19,6 +19,12 @@ H0 = planck.H0
 with open('data/plin_unit_h.p', 'rb') as handle:
     Plin = pickle.load(handle)
 
+# halo mass function 
+with open('data/hmfz.p', 'rb') as handle:
+    hmfz_dict = pickle.load(handle)
+Mh = hmfz_dict['Mh']
+hmfz = hmfz_dict['hmfz']
+
 # ##FIXME: define the redshift bins here to pre-calculate 
 # ## chi, dchi_dz
 # dchi_dz = speed_of_light/planck.H(zrange)
