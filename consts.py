@@ -45,3 +45,7 @@ dict_gal['ELG']['HOD']['Ac'] = 0.1
 dict_gal['ELG']['HOD']['log10Mc'] = 11.64
 dict_gal['ELG']['HOD']['sigmaM'] = 0.30
 dict_gal['ELG']['HOD']['gamma'] = 5.47
+dict_gal['ELG']['HOD']['As'] = 0.41
+dict_gal['ELG']['HOD']['alpha'] = 0.81
+dict_gal['ELG']['HOD']['M0'] = 10**11.20
+dict_gal['ELG']['HOD']['M1'] = 10**13.84

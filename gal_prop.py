@@ -14,6 +14,10 @@ Ac = dict_gal['HOD']['Ac']
 log10Mc = dict_gal['HOD']['log10Mc']
 sigmaM = dict_gal['HOD']['sigmaM']
 gamma = dict_gal['HOD']['gamma']
+As = dict_gal['HOD']['As']
+M0 = dict_gal['HOD']['M0']
+M1 = dict_gal['HOD']['M1']
+alpha = dict_gal['HOD']['alpha']
 
 def Ncen_GHOD(Mh, Ac = Ac, sigmaM = sigmaM, log10Mc = log10Mc):
     """
@@ -61,7 +65,21 @@ def Ncen(Mh, Ac = Ac, sigmaM = sigmaM,
         return first_term * second_term
     else:
         print("not ELG")
-        # result = np.log10(m) - self.log10mMin
-        # result /= self.sLog10m
-        # result = 0.5*(1.+special.erf(result))
-        # result *= self.fInc(m)
+        
+        
+def Nsat(Mh, As = As, M0 = M0,
+         M1 = M1, alpha = alpha):
+    """
+    Returns num. of sat. gal. per halo
+    
+    Args:
+        Mh : halo mass
+        As : size of sat. gal. sample
+        M0 : cut-off halo mass at which sat. gal. can be produced
+        M1 : normalization constant 
+        alpha : richness parameter
+    """
+    
+    power_term = (Mh - M0)/M1
+    return As * power_term**alpha 
+    
