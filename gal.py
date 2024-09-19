@@ -5,6 +5,7 @@ DESI Legacy Imaging Surveys galaxies.
 
 import numpy as np
 import scipy.special as ss
+from scipy.integrate import simpson
 import consts
 
 gal_type = 'ELG'
@@ -80,5 +81,25 @@ def Nsat(Mh, As = As, M0 = M0,
     """
     
     power_term = (Mh - M0)/M1
-    return As * power_term**alpha 
+    return As * power_term**alpha
+
+def nbar_gal(Ncen, Nsat, Mh, HMFz):
+    """
+    Returns the average galaxy number density.
     
+    Args:
+        Ncen : num. of central gal. inside halo (Mh, z)
+        Nsat : num. of sat. gal. inside halo (Mh, z)
+        Mh : halo mass bins
+        HMFz : halo mass function (z, Mh)
+        
+    Returns:
+        nbar : gal. num. density per z 
+    """
+    
+    Ntot = Ncen + Nsat
+    dlog10Mh = np.diff(np.log10(Mh))[0]
+    integrand = HMFz * Ntot
+    res = simpson(integrand, dx = dlog10Mh)
+    
+    return res   
