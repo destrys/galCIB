@@ -48,4 +48,5 @@ dict_gal['ELG']['HOD']['gamma'] = 5.47
 dict_gal['ELG']['HOD']['As'] = 0.41
 dict_gal['ELG']['HOD']['alpha'] = 0.81
 dict_gal['ELG']['HOD']['M0'] = 10**11.20
-dict_gal['ELG']['HOD']['M1'] = 10**13.84
+# based on Eq 3.9 of Rocher et al. 2023
+dict_gal['ELG']['HOD']['M1'] = 10**13.84 * dict_gal['ELG']['HOD']['As']**(1/dict_gal['ELG']['HOD']['alpha'])
