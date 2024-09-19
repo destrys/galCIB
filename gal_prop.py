@@ -34,6 +34,7 @@ def Ncen_GHOD(Mh, Ac = Ac, sigmaM = sigmaM, log10Mc = log10Mc):
     
     prefact = Ac/(np.sqrt(2 * np.pi) * sigmaM)
     exp_term = -0.5/(sigmaM**2) * (np.log10(Mh) - log10Mc)**2
+    exp_term = np.exp(exp_term)
     
     return prefact * exp_term
 
@@ -59,13 +60,11 @@ def Ncen(Mh, Ac = Ac, sigmaM = sigmaM,
         erf_term *= gamma/(np.sqrt(2) * sigmaM)
         erf_term = ss.erf(erf_term)
         second_term = 1 + erf_term 
-        
         first_term = Ncen_GHOD(Mh, Ac, sigmaM, log10Mc)
         
         return first_term * second_term
     else:
         print("not ELG")
-        
         
 def Nsat(Mh, As = As, M0 = M0,
          M1 = M1, alpha = alpha):
