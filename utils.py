@@ -15,6 +15,17 @@ H0 = consts.H0
 dict_ELG = consts.dict_gal['ELG']
 Plin = consts.Plin
 
+
+def nfwfourier_u(self):
+        rs = self.r_star()
+        c = self.nu_to_c200c()
+        a = self.ampl_nfw(c)
+        mu = np.outer(self.kk, rs)
+        Si1, Ci1 = self.sine_cosine_int(mu + mu * c)
+        Si2, Ci2 = self.sine_cosine_int(mu)
+        unfw = a*(cos(mu)*(Ci1-Ci2) + sin(mu)*(Si1-Si2)-sin(mu*c) / (mu+mu*c))
+        return unfw.transpose()  # dim(len(m), len(k))
+
 def B(nu, T): #DONE
     """
     Returns Plancks blackbody function as a function
@@ -98,7 +109,7 @@ def j_nuprime_z(nu, z, dM):
     return 0 #FIXME
 
 
-def W_cib(): #DONE
+def W_cib(): #FIXME
     """
     Returns redshift kernel of CIB field
     """
@@ -160,29 +171,7 @@ def cibterm(djc_dlogMh, djs_dlogMh, unfw): #FIXME: needs testing
     res = res + djc_dlogMh
     
     return res
-    
-    
-
-    
-    
-def jbar(nu, djc_dlogMh, djs_dlogMh, Mh, HMFz): #FIXME: needs testing; precalculate?
-    """
-    Returns total emissivity A8 of 2204.05299.
-    
-    Args:
-        nu : measurement frequency
-    """
-    
-    dj_dlogMh = djc_dlogMh + djs_dlogMh
-    dlog10Mh = np.diff(np.log10(Mh))
-    integrand = HMFz * dj_dlogMh
-    
-    res = simpson(integrand, dx = dlog10Mh)
-    
-    return res 
-    
-    
-    
+     
 
 def P_cibXgal_1h():
     """
