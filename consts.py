@@ -5,12 +5,14 @@ Helper function and constants for analysis
 from astropy.cosmology import Planck18 as planck
 from astropy import constants as const
 import pandas as pd 
-import pickle 
+import pickle
+import gal as gp
 
 # global variables 
 planck_const_h = const.h
 speed_of_light = const.c 
 boltzmann_kb = const.k_B
+KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * Lsol^-1
 
 OmegaM = planck.Om0
 H0 = planck.H0
