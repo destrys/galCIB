@@ -6,13 +6,13 @@ from astropy.cosmology import Planck18 as planck
 from astropy import constants as const
 import pandas as pd 
 import pickle
-import gal as gp
 
 # global variables 
 planck_const_h = const.h
 speed_of_light = const.c 
 boltzmann_kb = const.k_B
 KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * Lsol^-1
+L_sun = 3.828e26 # From Abhishek's code 
 
 OmegaM = planck.Om0
 H0 = planck.H0
@@ -26,10 +26,6 @@ with open('data/hmfz.p', 'rb') as handle:
     hmfz_dict = pickle.load(handle)
 Mh = hmfz_dict['Mh']
 hmfz = hmfz_dict['hmfz']
-
-# ##FIXME: define the redshift bins here to pre-calculate 
-# ## chi, dchi_dz
-# dchi_dz = speed_of_light/planck.H(zrange)
 
 # store all relevant galaxy information
 dict_gal = {}
@@ -58,3 +54,6 @@ dict_gal['ELG']['HOD']['alpha'] = 0.81
 dict_gal['ELG']['HOD']['M0'] = 10**11.20
 # based on Eq 3.9 of Rocher et al. 2023
 dict_gal['ELG']['HOD']['M1'] = 10**13.84 * dict_gal['ELG']['HOD']['As']**(1/dict_gal['ELG']['HOD']['alpha'])
+
+Omegab_to_OmegaM_over_z = planck.Ob(dict_gal['ELG']['z'])/planck.Om(dict_gal['ELG']['z'])
+dict_gal['ELG']['Omegab_to_OmegaM_over_z'] = Omegab_to_OmegaM_over_z
