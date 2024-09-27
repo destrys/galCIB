@@ -30,6 +30,6 @@ nu0_z = cib.nu0_z(Td)
 tmpbnu = np.diag(cib.B_nu(tmpnu0, Td))
 
 ## pre-calculate radial kernels
-window_radial_gal = gal.window_gal()
-window_radial_cib = cib.window_cib(z)
+radial_window_gal = gal.window_gal()
+radial_window_cib = cib.window_cib(z)
 

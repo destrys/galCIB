@@ -10,6 +10,7 @@ from scipy.integrate import simpson
 
 # import local modules
 import consts
+import precalculation as pc
 
 dict_gal = consts.dict_gal['ELG']
 chi = dict_gal['chi']
@@ -79,11 +80,13 @@ def window_cibxgal():
     """
     Returns the multiplication of the radial window functions.
     """
-    window = window_gal() #FIXME
-    w_gal = window(self.z)/self.uni.dchi_dz(self.z) #FIXME
-    w_cib = self.window_cib() #FIXME
+    
+    # W_gal = dz/dchi * pz
+    w_gal = pc.radial_window_gal/dchi_dz
+    
+    w_cib = pc.radial_window_cib
 
-    return w_cib*w_gal
+    return w_cib*w_gal #shape (z,)
     
 
 
