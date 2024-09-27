@@ -29,6 +29,7 @@ nu0_z = cib.nu0_z(Td)
 # normalization factor for Theta
 tmpbnu = np.diag(cib.B_nu(tmpnu0, Td))
 
-## pre-calculate necessary variables from gal.py
-window_gal = gal.window_gal()
+## pre-calculate radial kernels
+window_radial_gal = gal.window_gal()
+window_radial_cib = cib.window_cib(z)
 

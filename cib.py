@@ -11,6 +11,9 @@ from scipy.integrate import simpson
 # bivariate interpolation over a rectangular mesh
 from scipy.interpolate import RectBivariateSpline
 
+# Lambert W function solver
+from scipy.special import lambertw
+
 c_light = consts.speed_of_light
 c_light_kms = c_light/1000
 Mh = consts.Mh
@@ -24,6 +27,12 @@ Ob_to_Om = dict_gal['Omegab_to_OmegaM_over_z']
 hp = consts.hp
 kB = consts.k_B
 
+#dust parameters
+dalpha = 0.36
+dT0 = 24.4 # Planck CIB 2013
+dbeta = 1.75 
+dgamma = 1.7
+
 ## parametric dust model functions 
 def Tdust(z):
     """
@@ -33,10 +42,8 @@ def Tdust(z):
     Returns:
         res: of shape (z,)
     """
-    
-    T0 = 24.4  # Planck CIB 2013 paper
-    alpha = 0.36
-    res = T0*(1.+z)**alpha
+
+    res = dT0*(1. + z)**dalpha
     return res
 
 def B_nu(nu, Td):
@@ -57,21 +64,78 @@ def B_nu(nu, Td):
     
     return res
 
-# def mod_blackbody(Bnu):
-#     """
-#     Returns gray-body function. 
+def mod_blackbody(Bnu, nu):
     
-#     Args:
-#         Bnu : Planck function of shape (nu, z)
-#     Returns:
-#         res : modified Planck func of shape (nu, z)
-#     """
+    """
+    Returns gray-body function. 
     
-#     beta = 1.75
-#     result = Bnu
-#     result *= nu**beta
-#     # result *= w_jy  # Watt to Jy
-#     return result
+    Args:
+        Bnu : Planck function of shape (nu, z)
+        nu : freq. array matching Bnu axis 0 binning of nu
+    Returns:
+        res : modified Planck func of shape (nu, z)
+    """
+    
+    res = Bnu
+    res = res * (nu**dbeta)[:,np.newaxis] # broadcast for proper shape
+    
+    return res
+
+def nu0_z(Td):
+    """
+    Returns the pivot frequency as a function of redshift.
+    
+    For modified blackboy approximation, we have dlntheta/dlnnu = -gamma for nu=nu0.
+    Here theta is the modified blackbody spectrum. In order to find nu0
+    which isredshift dependent, we need to take a derivative and solve
+    for this numerically. In the end it comes out in the form
+    (x-(3+beta+gamma))e(x-(3+beta+gamma)) = -(3+beta+gamma)e(-(3+beta+gamma))
+    The solution is x-(3+beta+gamma) = W(-(3+beta+gamma)e(-(3+beta+gamma)))
+    here W is Lambert's W fnction which is implemented in scipy.
+    x = hnu/KT
+    
+    Args:
+        Td : dust temperature of shape (z,)
+    """
+    
+    #FIXME: is this actually smoothly connecting?
+    y = -(3 + dbeta + dgamma) * np.exp(-(3 + dbeta + dgamma))
+    xx = lambertw(y)
+    x = xx + (3 + dbeta + dgamma)
+    nu0z = np.real(x * (kB * Td)/hp)
+    return nu0z
+
+
+def Theta(mod_Bnu, Bnu_at_nu0, nu, nu0):
+    """
+    Returns the modified SED for gray-body function normalized to 1 at pivot freq.
+    
+    Args:
+        mod_Bnu : gray-body function 
+        Bnu_at_nu0 : gray-body value at pivot freq. 
+    """
+
+    #theta(nu') = nu'**beta * Bnu(Td) nu < nu0
+    #theta(nu') = nu'**(-gamma) nu>= nu0
+    
+    # calculating only for nu < nu0
+    # normalised SED such that theta(nu0) = 1
+    
+    theta = mod_Bnu/Bnu_at_nu0 
+    #theta[nu >= nu0] = 
+    #FIXME: why not the nu >= nu0 SED? 
+    return theta
+
+
+def window_cib(z):
+    """
+    Returns CIB radial kernel.
+    """
+    
+    a = 1/(1+z)
+    w_cib = a * jbar() #FIXME
+    
+    return w_cib
 
 ## end of parametric dust model functions
 
