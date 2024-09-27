@@ -17,7 +17,7 @@ KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * L
 L_sun = 3.828e26 # From Abhishek's code 
 
 
-OmegaM = planck.Om0
+OmegaM0 = planck.Om0
 H0 = planck.H0
 
 # linear power spectrum
@@ -44,6 +44,15 @@ dict_gal['ELG']['mag_bias_alpha'] = 2.225
 # cosmology-related values
 dict_gal['ELG']['chi'] = planck.comoving_distance(dict_gal['ELG']['z'])
 dict_gal['ELG']['Hz'] = planck.H(dict_gal['ELG']['z'])
+
+def dchi_dz(z):
+    """
+    Returns differential element dchi/dz (z) 
+    """
+    
+    a = apconst.c/(H0*np.sqrt(OmegaM0*(1.+z)**3 + planck.Ode0))
+    return a.value
+dict_gal['ELG']['dchi_dz'] = dchi_dz(dict_gal['ELG']['z'])
 
 # dict with ELG HOD properties based on 
 # Table 7 of Rocher et al. 2023
