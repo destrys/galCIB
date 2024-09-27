@@ -3,16 +3,17 @@ Helper function and constants for analysis
 """
 
 from astropy.cosmology import Planck18 as planck
-from astropy import constants as const
+from astropy import constants as apconst
+from scipy import constants as spconst
 import pandas as pd 
 import pickle
 
 # global variables 
-planck_const_h = const.h
-speed_of_light = const.c 
-boltzmann_kb = const.k_B
+speed_of_light = apconst.c 
+k_B = spconst.k # Boltzmann constant in SI units
 KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * Lsol^-1
 L_sun = 3.828e26 # From Abhishek's code 
+hp = spconst.h # Planck's constant in SI units
 
 OmegaM = planck.Om0
 H0 = planck.H0
@@ -21,7 +22,7 @@ H0 = planck.H0
 with open('data/plin_unit_h.p', 'rb') as handle:
     Plin = pickle.load(handle)
 
-# halo mass function 
+# halo mass function from colossus
 with open('data/hmfz.p', 'rb') as handle:
     hmfz_dict = pickle.load(handle)
 Mh = hmfz_dict['Mh']
