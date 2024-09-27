@@ -9,11 +9,13 @@ import pandas as pd
 import pickle
 
 # global variables 
-speed_of_light = apconst.c 
+speed_of_light = spconst.c # in SI units
 k_B = spconst.k # Boltzmann constant in SI units
+hp = spconst.h # Planck's constant in SI units
+
 KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * Lsol^-1
 L_sun = 3.828e26 # From Abhishek's code 
-hp = spconst.h # Planck's constant in SI units
+
 
 OmegaM = planck.Om0
 H0 = planck.H0
