@@ -10,6 +10,7 @@ import consts
 
 gal_type = 'ELG'
 dict_gal = consts.dict_gal[gal_type]
+pz = dict_gal['pz']
 
 Ac = dict_gal['HOD']['Ac']
 log10Mc = dict_gal['HOD']['log10Mc']
@@ -83,8 +84,13 @@ def Nsat(Mh, As = As, M0 = M0,
     power_term = (Mh - M0)/M1
     return As * power_term**alpha
 
-def nbar_gal(Ncen, Nsat, Mh, HMFz):
+def window_gal():
+    """
+    Return radial kernel of galaxy sample.
+    """
     
+    return pz
+
 def galterm_Pk(Ncen, Nsat, unfw): #FIXME: needs testing
     """
     Returns the second bracket in A13 of 2204.05299.
