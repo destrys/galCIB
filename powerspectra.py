@@ -83,10 +83,10 @@ def window_cibxgal():
     
     # W_gal = dz/dchi * pz
     w_gal = pc.radial_window_gal/dchi_dz
-    
+
     w_cib = pc.radial_window_cib
 
-    return w_cib*w_gal #shape (z,)
+    return w_gal * w_cib #shape (nu,z)
     
 
 
