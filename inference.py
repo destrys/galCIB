@@ -8,6 +8,7 @@ import pocomc as pc
 
 # modules in this folder
 import precalculation as pc
+import powerspectra
 import cib
 import gal
 
@@ -32,7 +33,7 @@ def log_likelihood(theta):
     Returns gaussian likelihood
     """
     
-    model = get_model(theta)
+    model = powerspectra.cibgalcross_cell_tot(theta)
     log_ll = (model - data) @ invcov @ (model - data)
     
     return log_ll

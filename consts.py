@@ -16,6 +16,17 @@ hp = spconst.h # Planck's constant in SI units
 
 KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * Lsol^-1
 L_sun = 3.828e26 # From Abhishek's code 
+fsub = 0.134 # from Abhi's code, further note below.
+#         fraction of the mass of the halo that is in form of
+#         sub-halos. We have to take this into account while calculating the
+#         star formation rate of the central halos. It should be calulated by
+#         accounting for this fraction of the subhalo mass in the halo mass
+#         central halo mass in this case is (1-f_sub)*mh where mh is the total
+#         mass of the halo.
+#         for a given halo mass, f_sub is calculated by taking the first moment
+#         of the sub-halo mf and and integrating it over all the subhalo masses
+#         and dividing it by the total halo mass.
+
 
 
 OmegaM0 = planck.Om0
