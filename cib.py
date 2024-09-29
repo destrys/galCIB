@@ -225,8 +225,11 @@ def SFRc(params, model):
         sigma_M0, mu_peak0, mu_peakp, delta = params
         
         phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
+        # Reshape phi(z) to broadcast across rows of Sigma
+        phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
+
         sigma_c = Sigmac(sigma_M0, mu_peak0, mu_peakp) * phiCIB 
-        sigma_s = Sigmas() * phiCIB
+        #sigma_s = Sigmas(sigma_M0, mu_peak0, mu_peakp) * phiCIB
         
     if model == 'M21':
         sfrmhdot = self.sfr_mhdot(mhalo)
@@ -236,6 +239,7 @@ def SFRc(params, model):
     #return mhdot * f_b * sfrmhdot
     return res 
 
+# DONE
 def phi_CIB(delta):
     """
     Returns redshift kernel of CIB contribution. 
@@ -258,29 +262,82 @@ def Sigmac(sigma_M0, mu_peak0, mu_peakp):
     Returns Luminosity-Mass relationship of central galaxies. 
     From 2.32 of 2310.10848.
     
-    Sigma_c(M) = <N^IR_c (M)> Sigma(M)
+    Sigma_c(M) = <N^IR_c (M)> Sigma(M).
+    
+    Args:
+        sigma_M0 : halo mass range contributing to IR emissivity 
+        mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
+        mu_peakp : rate of change of halo mass contributing to IR emissity at higher z 
+        
+    Returns:
+        res : of shape (Mh, z)
     """
     
-    res = mean_N_IR_c * Sigma(sigma_M0, mu_peak0, mu_peakp) #FIXME: is mean_N_IR_c same as the galaxy HOD sample?
+    #FIXME: is mean_N_IR_c same as the galaxy HOD sample? is it a function of z or just M?
+    res = mean_N_IR_c * Sigma(sigma_M0, mu_peak0, mu_peakp) 
     
     return res
 
-# def Sigmas():
+def Sigmas(sigma_M0, mu_peak0, mu_peakp):
     
-#     """
-#     Returns Luminosity-Mass relationship of satellite galaxies. 
-#     From 2.33 of 2310.10848.
+    """
+    Returns Luminosity-Mass relationship of satellite galaxies. 
+    From 2.33 of 2310.10848.
     
-#     Sigma_s(M) = integrate from M_min to M 
-#     integrand = d ln m dN_sub/dln m (m | M) Sigma(M)
-#     """
+    Sigma_s(M) = integrate from M_min to M 
+    integrand = d ln m dN_sub/dln m (m | M) Sigma(M)
     
-#     # Represents minimum halo mass that can host subhalos
-#     M_min = 1e6 #Msun according to pg 11 of 2310.10848. 
+    Args:
+        sigma_M0 : halo mass range contributing to IR emissivity 
+        mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
+        mu_peakp : rate of change of halo mass contributing to IR emissity at higher z  
     
-#     # based on 12 of 0909.1325.
-#     #FIXME: is this the state of the art? 
-#     dN_sub_dlnm = 0.30 * (m_sub/m_host)**(-0.7) * np.exp(-9.9*(m_sub/m_host)**2.5)
+    Returns : 
+        res : of shape (Mh, z)
+    """
+    
+    # Represents minimum halo mass that can host subhalos
+    Mmin = 1e6 #Msun according to pg 11 of 2310.10848. 
+    
+    # Discretize the log-space between Mmin and Mmax for all Mh values
+    def log_m_range_vectorized(M, num_points=100):
+        """Create a 2D log-spaced array of m values for each M."""
+        
+        M_log_min = np.log(Mmin) 
+        M_log_vals = np.log(M)
+        log_m_vals = M_log_min + (np.linspace(0, 1, num_points) * (M_log_vals[:, np.newaxis] - M_log_min))  # Shape (len(M), num_points)
+        m_vals = np.exp(log_m_vals)  # Convert back to m values
+        return m_vals  # Shape (len(M), num_points)
+    
+    # based on 12 of 0909.1325.
+    #FIXME: is this the state of the art? 
+    def dN_sub_dlnm(m, M):
+        """Vectorized f function that takes m and M arrays."""
+        res = 0.30 * (m/M[:, np.newaxis])**(-0.7)
+        expterm = -9.9 * (m/M[:, np.newaxis])**2.5
+        return res * np.exp(expterm)
+    
+    # Generate the 2D m grid for each Mh
+    m_vals = log_m_range_vectorized(Mh)  # Shape (Mh, m) here m is of length num_points
+
+    # Compute subhalo function (m, M)
+    subhalo_func = dN_sub_dlnm(m_vals, Mh)  # Shape (Mh, m)
+    
+    # Compute Sigma(m, z) for all m and z
+    Sigma_vals =  Sigma(sigma_M0, mu_peak0, mu_peakp)
+    
+    # Integrate over ln m
+    ln_m_vals = np.log(m_vals)
+    
+    #FIXME: can take out Sigma since it does not depend on m? 
+    integral = simpson(subhalo_func, x=ln_m_vals, axis=1)  # Shape (Mh,)
+    
+    # Combine results: Sigmas(M, z) = Sigma(M, z) * integral
+    res = Sigma_vals * integral[:, np.newaxis]  # Shape (Mh, z)
+    
+    return res
+
+
 
 #DONE 
 def Sigma(sigma_M0, mu_peak0, mu_peakp):
