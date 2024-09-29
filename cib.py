@@ -126,18 +126,196 @@ def Theta(mod_Bnu, Bnu_at_nu0, nu, nu0):
     #FIXME: why not the nu >= nu0 SED? 
     return theta
 
+## end of parametric dust model functions
 
-def window_cib(z):
+def window_cib(nu, z):
     """
     Returns CIB radial kernel.
+    
+    Returns:
+        w_cib : of shape (nu, z)
     """
     
     a = 1/(1+z)
-    w_cib = a * jbar() #FIXME
+    w_cib = a * jbar(nu) #FIXME
     
     return w_cib
 
-## end of parametric dust model functions
+def jbar(nu):
+    """
+    Returns the mean emissivity of the CIB halos.
+    
+    Args:
+        nu : measurement frequency
+        Mh : halo mass
+    
+    Returns:
+        res : of shape (nu, z)
+    """
+    
+    #djc/s returns of the shape (nu, Mh, z)
+    djdlogmh = djc_dlogMh(nu) + djsub_dlogMh(nu) #FIXME
+    dm = np.log10(Mh[1]/Mh[0])
+    integrand = djdlogmh*hmfz
+    
+    # integrate along log mass axis 
+    res = simpson(integrand, dx=dm, axis = 1)
+    return res
+
+def djc_dlogMh(nu, z, model, fsub = 0.134):
+    """
+    Returns the emissivity of central galaxies per log halo mass. 
+    
+    from A6 of 2204.05299
+    djc_dlogMh (Mh, z) = chi^2 * (1+z) * SFRc/K * S^eff_nu (z)
+    
+    Args:
+        nu : measurement frequency 
+        z : redshift 
+        model : 'S12', 'M21' or 'Y23'
+    Returns:
+        jc : matrix of shape (nu, Mh, z)
+    """
+    
+    # fraction of the mass of the halo that is in form of
+    # sub-halos. We have to take this into account while calculating the
+    # star formation rate of the central halos. It should be calculated by
+    # accounting for this fraction of the subhalo mass in the halo mass
+    # central halo mass in this case is (1-f_sub)*mh where mh is the total
+    # mass of the halo.
+    # for a given halo mass, f_sub is calculated by taking the first moment
+    # of the sub-halo mf and and integrating it over all the subhalo masses
+    # and dividing it by the total halo mass.
+    fsub = 0.134
+    
+    #snu = self.snu #FIXME
+    
+    prefact = chi**2 * (1 + z)
+    prefact = prefact/KC
+    
+    #FIXME: SFRc function will change as a function of models to be tested
+    # prefact[z], SFRc[M, z], Seff[nu, z]
+    jc = np.zeros(((len(nu_list), len(Mh), len(z)))) #FIXME correct variable names
+    jc = prefact * SFRc(Mh * (1-fsub)) * Seff(nu, z, model)   
+    
+    #---- look at the code below to understand order of operation 
+    # a = np.zeros((len(snu[:, 0]), len(self.mh), len(self.z)))
+    # rest = self.sfr(self.mh*(1-fsub))*(1 + self.z) *\
+    #     self.cosmo.comoving_distance(self.z).value**2/KC
+    # # print (rest[50, 10:13])
+    # for f in range(len(snu[:, 0])):
+    #     a[f, :, :] = rest*snu[f, :]
+    # return a #jc for us 
+    
+    return jc
+
+def SFRc(params, model):
+    """
+    Returns star formation rate of central galaxies as a function of halo parameters and model.
+    
+    Args:
+        params : model parameters
+        model : model name 
+    """
+    
+    if model == 'S12':
+        # SFRC_c (Mh, z) propto Sigma_c (M,z) Phi (z) 
+        # from 2.34 of 2310.10848
+        
+        sigma_M0, mu_peak0, mu_peakp, delta = params
+        
+        phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
+        sigma_c = Sigmac(sigma_M0, mu_peak0, mu_peakp) * phiCIB 
+        sigma_s = Sigmas() * phiCIB
+        
+    if model == 'M21':
+        sfrmhdot = self.sfr_mhdot(mhalo)
+        mhdot = Mdot(mhalo)
+
+        res = Ob_to_Om
+    #return mhdot * f_b * sfrmhdot
+    return res 
+
+def phi_CIB(delta):
+    """
+    Returns redshift kernel of CIB contribution. 
+    
+    from 2.26 of 2310.10848 (originally 22 of 1109.1522).
+    
+    Phi(z) = (1 + z)^delta
+    
+    Args:
+        delta : power index defining redshift evolution contribution.
+    """
+    
+    phi = (1 + z)**delta
+    
+    return phi
+
+def Sigmac(sigma_M0, mu_peak0, mu_peakp):
+    
+    """
+    Returns Luminosity-Mass relationship of central galaxies. 
+    From 2.32 of 2310.10848.
+    
+    Sigma_c(M) = <N^IR_c (M)> Sigma(M)
+    """
+    
+    res = mean_N_IR_c * Sigma(sigma_M0, mu_peak0, mu_peakp) #FIXME: is mean_N_IR_c same as the galaxy HOD sample?
+    
+    return res
+
+# def Sigmas():
+    
+#     """
+#     Returns Luminosity-Mass relationship of satellite galaxies. 
+#     From 2.33 of 2310.10848.
+    
+#     Sigma_s(M) = integrate from M_min to M 
+#     integrand = d ln m dN_sub/dln m (m | M) Sigma(M)
+#     """
+    
+#     # Represents minimum halo mass that can host subhalos
+#     M_min = 1e6 #Msun according to pg 11 of 2310.10848. 
+    
+#     # based on 12 of 0909.1325.
+#     #FIXME: is this the state of the art? 
+#     dN_sub_dlnm = 0.30 * (m_sub/m_host)**(-0.7) * np.exp(-9.9*(m_sub/m_host)**2.5)
+
+#DONE 
+def Sigma(sigma_M0, mu_peak0, mu_peakp):
+    """
+    Returns the Luminosity-Mass relation.
+    From 2.30 of 2310.10848 (originally 23 of 1109.1522)
+    
+    Sigma(M) = M * 1/sqrt(2*pi*sigma_M,0^2) * exp[-0.5(ln M - lnM_peak)^2/sigma_M,0^2]
+    
+    Args:
+        sigma_M0 : halo mass range contributing to IR emissivity 
+        mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
+        mu_peakp : rate of change of halo mass contributing to IR emissity at higher z 
+    
+    Returns: 
+        res : of shape (Mh, z)
+    """
+    
+    
+    M_peak = mu_peak0 + mu_peakp * z/(1+z) # M_peak may change with z 
+
+    # broadcast properly since Sigma is of shape (Mh, z)
+    M = Mh[:, np.newaxis] # Make M a column vector of shape (len(Mh), 1)
+    M_peak_z = M_peak[np.newaxis, :]  # Make M_peak(z) a row vector of shape (1, len(z))
+    
+    prefact = M/np.sqrt(2 * np.pi * sigma_M0**2)
+    
+    expterm = -0.5 * ((np.log(M) - np.log(M_peak_z))/sigma_M0)**2
+    
+    res = prefact * np.exp(expterm)
+    
+    return res
+    
+    
+    
 
 #FIXME: need to discuss with Abhi if we want to still use this model
 # def Theta(nu, z, beta, Td, gamma):
@@ -261,62 +439,9 @@ def window_cib(z):
     
 #     return SED
 
-# #FIXME can be precalculated? 
-# def SFR(Mh, model):
-#     """
-#     Returns star formation rate as a function of halo mass and model.
-#     """
-    
 
-    
-#     if model == 'M21':
-#         sfrmhdot = self.sfr_mhdot(mhalo)
-#         mhdot = Mdot(mhalo)
 
-#         res = Ob_to_Om
-#     #return mhdot * f_b * sfrmhdot
-#     return res 
 
-# def djc_dlogMh(nu, z, model, fsub = 0.134):
-#     """
-#     Returns the emissivity of central galaxies per log halo mass. 
-    
-#     Args:
-#         nu : measurement frequency 
-#         z : redshift 
-#         model : 'S12', 'M21' or 'Y23'
-#     Returns:
-#         jc : matrix of shape (nu, Mh, z)
-#     """
-    
-#     # fraction of the mass of the halo that is in form of
-#     # sub-halos. We have to take this into account while calculating the
-#     # star formation rate of the central halos. It should be calculated by
-#     # accounting for this fraction of the subhalo mass in the halo mass
-#     # central halo mass in this case is (1-f_sub)*mh where mh is the total
-#     # mass of the halo.
-#     # for a given halo mass, f_sub is calculated by taking the first moment
-#     # of the sub-halo mf and and integrating it over all the subhalo masses
-#     # and dividing it by the total halo mass.
-#     fsub = 0.134
-    
-#     snu = self.snu #FIXME: where is this coming from?
-    
-#     prefact = chi**2 * (1 + z)
-#     prefact = prefact/KC
-    
-#     #FIXME: SFRc function will change as a function of models to be tested
-#     # prefact[z], SFRc[], Seff[nu, z]
-#     jc = prefact * SFRc(Mh * (1-fsub), z) * Seff(nu, z, model)   
-    
-#     #---- look at the code below to understand order of operation 
-#     # a = np.zeros((len(snu[:, 0]), len(self.mh), len(self.z)))
-#     # rest = self.sfr(self.mh*(1-fsub))*(1 + self.z) *\
-#     #     self.cosmo.comoving_distance(self.z).value**2/KC
-#     # # print (rest[50, 10:13])
-#     # for f in range(len(snu[:, 0])):
-#     #     a[f, :, :] = rest*snu[f, :]
-#     # return a #jc for us 
 
 # def djsub_dlogMh(fsub = 0.134): 
     
@@ -360,20 +485,3 @@ def window_cib(z):
 #         #         self.cosmo.comoving_distance(self.z).value**2
 #         # return a
     
-# def jbar(nu, Mh):
-#     """
-#     Returns the mean emissivity of the CIB halos.
-    
-#     Args:
-#         nu : measurement frequency
-#         Mh : halo mass
-#     """
-    
-#     #djc/s returns of the shape (nu, Mh, z)
-#     djdlogmh = djc_dlogMh() + djsub_dlogMh()
-#     dm = np.log10(Mh[1]/Mh[0])
-#     integrand = djdlogmh*hmfz
-    
-#     # integrate along log mass axis 
-#     res = simpson(integrand, dx=dm, axis = 1)
-#     return res
