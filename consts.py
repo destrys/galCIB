@@ -82,3 +82,36 @@ dict_gal['ELG']['HOD']['M1'] = 10**13.84 * dict_gal['ELG']['HOD']['As']**(1/dict
 
 Omegab_to_OmegaM_over_z = planck.Ob(dict_gal['ELG']['z'])/planck.Om(dict_gal['ELG']['z'])
 dict_gal['ELG']['Omegab_to_OmegaM_over_z'] = Omegab_to_OmegaM_over_z
+
+# star formation constants
+def BAR(M, z):
+    """
+    Returns baryon accretion rate for models M21 and Y23.
+    
+    Represents of the total amount of mass growth,
+    what fraction is baryon.
+    
+    Returns:
+        bar : of shape (M, z)
+    """
+    
+    def MGR(M, z):
+        """
+        Returns Mass Growth Rate. 
+        
+        From 2.37 of 2310.10848.
+        """
+        
+        # Reshape M and z to enable broadcasting
+        M = M[:, np.newaxis]  # Shape (len(M), 1)
+        z = z[np.newaxis, :]  # Shape (1, len(z))
+        
+        res = 46.1 * (M/1e12)**1.1 * (1 + 1.11 * z) * np.sqrt(Om0 *(1+z)**3 + Ode0)
+        
+        return res
+    
+    bar = MGR(M, z) * Ob_to_Om
+    
+    return bar
+
+bar = BAR(Mh, dict_gal['ELG']['z'])

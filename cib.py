@@ -29,6 +29,7 @@ kB = consts.k_B
 fsub = consts.fsub
 Om0 = consts.OmegaM0
 Ode0 = consts.Ode0
+bar = consts.bar
 
 #dust parameters
 dalpha = 0.36
@@ -253,23 +254,26 @@ def SFRc(params, model):
         phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
         # Reshape phi(z) to broadcast across rows of Sigma
         phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
-
-        sfrc = Sigmac(sigma_M0, mu_peak0, mu_peakp) * phiCIB 
+        sigmac = Sigmac(sigma_M0, mu_peak0, mu_peakp)
+        sfrc =  sigmac * phiCIB 
     
     elif model == 'M21':
         #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)
+        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc = params
         
-        bar = params #FIXME: BAR is precalculated and passed as a param
-        eta = 
-        
-        sfrmhdot = self.sfr_mhdot(mhalo)
-
-        res = Ob_to_Om
-        
-        sfrc = eta * BAR
+        sfr = SFR(etamax, mu_peak0, mu_peakp, 
+                  sigma_M0, tau, zc)
+        sfrc = sfr * mean_N_IR_c #FIXME: what is this?
 
     elif model == 'Y23':
-        print("ok")
+        mu_peak0, mu_peakp, sigma_M0, tau, zc = params
+        
+        # Model cannot constrain etamax so set to 1.
+        # Normalization is absorbed by L0 param in SED.
+        sfr = SFR(etamax = 1, mu_peak0=mu_peak0,
+                  mu_peakp=mu_peak0, sigma_M0=sigma_M0,
+                  tau=tau, zc=zc)
+        sfrc = sfr * mean_N_IR_c #FIXME: what is this?
         
     else:
         print("Not correct model.")
@@ -277,37 +281,53 @@ def SFRc(params, model):
     return sfrc 
 
 
-def BAR(M, z):
+def SFR(etamax, mu_peak0, mu_peakp, 
+        sigma_M0, tau, zc):
     """
-    Returns baryon accretion rate.
+    Returns star formation rate for models
+    M21 and Y23.
+    """
     
-    Represents of the total amount of mass growth,
-    what fraction is baryon.
+    eta_val = eta(etamax, mu_peak0, mu_peakp, 
+                  sigma_M0, tau, zc) 
+    sfr = eta_val * bar
+    
+    return sfr
+
+def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
+        tau, zc):
+    """
+    Returns star formation efficiency parameter.
+    
+    From 2.38 of 2310.10848.
+    eta (M, z) = eta_max * exp(-0.5((ln M - ln Mpeak(z))/sigmaM(z))^2)
+    M = Mh and z = z so these are fixed. 
+    sigmaM represents range of halo masses over which star formation is efficient. 
+    
+    Args:
+        etamax : highest star formation efficiency
+        mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
+        mu_peakp : rate of change of halo mass contributing to IR emissity at higher z 
+        sigma_M0 : halo mass range contributing to IR emissivity below peak mass
+        zc : the redshift below which the mass window for star formation starts to evolve
+        tau : rate of zc evolution 
     
     Returns:
-        bar : of shape (M, z)
+        eta_val : of shape (Mh, z)
     """
     
-    def MGR(M, z):
-        """
-        Returns Mass Growth Rate. 
-        
-        From 2.37 of 2310.10848.
-        """
-        
-        # Reshape M and z to enable broadcasting
-        M = M[:, np.newaxis]  # Shape (len(M), 1)
-        z = z[np.newaxis, :]  # Shape (1, len(z))
-        
-        res = 46.1 * (M/1e12)**1.1 * (1 + 1.11 * z) * np.sqrt(Om0 *(1+z)**3 + Ode0)
-        
-        return res
+    # Reshape Mh and z for broadcasting
+    M_re = Mh[:, np.newaxis]  # Shape (len(M), 1)
+    z_re = z[np.newaxis, :]  # Shape (1, len(z))
     
-    bar = MGR(M, z) * Ob_to_Om
+    Mpeak = mu_peak0 + mu_peakp * z_re/(1+z_re) # M_peak may change with z 
     
-    return bar 
-
-def 
+    # parametrization based on 2.39 of 2310.10848.
+    sigmaM = np.where(M_re < Mpeak, sigma_M0, sigma_M0 * (1 - tau/zc * np.maximum(0, zc - z_re)))  # Shape (len(M), len(z))
+    
+    eta_val = etamax * np.exp(-0.5 * ((np.log(M_re) - np.log(Mpeak))/sigmaM)**2)
+    
+    return eta_val
 
 
 def SFRsub(params, model):

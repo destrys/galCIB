@@ -36,6 +36,3 @@ nu0_z = cib.nu0_z(Td)
 radial_window_gal = gal.window_gal()
 #radial_window_cib = cib.window_cib(nu_list, z)
 
-## precalculation for SFR 
-bar = cib.BAR(M=Mh, z=z)
-
