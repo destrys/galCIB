@@ -30,9 +30,12 @@ mod_Bnu = cib.mod_blackbody(Bnu, nu_list)
 nu0_z = cib.nu0_z(Td)
 
 # normalization factor for Theta
-tmpbnu = np.diag(cib.B_nu(tmpnu0, Td))
+#tmpbnu = np.diag(cib.B_nu(tmpnu0, Td))
 
 ## pre-calculate radial kernels
 radial_window_gal = gal.window_gal()
-radial_window_cib = cib.window_cib(nu_list, z)
+#radial_window_cib = cib.window_cib(nu_list, z)
+
+## precalculation for SFR 
+bar = cib.BAR(M=Mh, z=z)
 

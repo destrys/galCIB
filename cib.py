@@ -27,6 +27,8 @@ Ob_to_Om = dict_gal['Omegab_to_OmegaM_over_z']
 hp = consts.hp
 kB = consts.k_B
 fsub = consts.fsub
+Om0 = consts.OmegaM0
+Ode0 = consts.Ode0
 
 #dust parameters
 dalpha = 0.36
@@ -154,6 +156,8 @@ def jbar(nu):
         res : of shape (nu, z)
     """
     
+    ##FIXME: maybe calculate phiCIB here and pass it down to relevant functions
+    
     #djc/s returns of the shape (nu, Mh, z)
     djdlogmh = djc_dlogMh(nu) + djsub_dlogMh(nu) #FIXME
     dm = np.log10(Mh[1]/Mh[0])
@@ -193,6 +197,8 @@ def djc_dlogMh(nu, z, model, fsub = 0.134):
     prefact = chi**2 * (1 + z)
     prefact = prefact/KC
     
+    
+    
     #FIXME: SFRc function will change as a function of models to be tested
     # prefact[z], SFRc[M, z], Seff[nu, z]
     jc = np.zeros(((len(nu_list), len(Mh), len(z)))) #FIXME correct variable names
@@ -228,7 +234,7 @@ def djsub_dlogMh(params, model):
     prefact = prefact/KC
     
     sfrsub = SFRsub(params, model)
-     
+        
 def SFRc(params, model):
     """
     Returns star formation rate of central galaxies as a function of halo parameters and model.
@@ -239,7 +245,7 @@ def SFRc(params, model):
     """
     
     if model == 'S12':
-        # SFRC_c (Mh, z) propto Sigma_c (M,z) Phi (z) 
+        # SFR_c (Mh, z) propto Sigma_c (M,z) Phi (z) 
         # from 2.34 of 2310.10848
         
         sigma_M0, mu_peak0, mu_peakp, delta = params
@@ -248,16 +254,61 @@ def SFRc(params, model):
         # Reshape phi(z) to broadcast across rows of Sigma
         phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
 
-        sigma_c = Sigmac(sigma_M0, mu_peak0, mu_peakp) * phiCIB 
-        #sigma_s = Sigmas(sigma_M0, mu_peak0, mu_peakp) * phiCIB
+        sfrc = Sigmac(sigma_M0, mu_peak0, mu_peakp) * phiCIB 
+    
+    elif model == 'M21':
+        #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)
         
-    if model == 'M21':
+        bar = params #FIXME: BAR is precalculated and passed as a param
+        eta = 
+        
         sfrmhdot = self.sfr_mhdot(mhalo)
-        mhdot = Mdot(mhalo)
 
         res = Ob_to_Om
-    #return mhdot * f_b * sfrmhdot
-    return res 
+        
+        sfrc = eta * BAR
+
+    elif model == 'Y23':
+        print("ok")
+        
+    else:
+        print("Not correct model.")
+        
+    return sfrc 
+
+
+def BAR(M, z):
+    """
+    Returns baryon accretion rate.
+    
+    Represents of the total amount of mass growth,
+    what fraction is baryon.
+    
+    Returns:
+        bar : of shape (M, z)
+    """
+    
+    def MGR(M, z):
+        """
+        Returns Mass Growth Rate. 
+        
+        From 2.37 of 2310.10848.
+        """
+        
+        # Reshape M and z to enable broadcasting
+        M = M[:, np.newaxis]  # Shape (len(M), 1)
+        z = z[np.newaxis, :]  # Shape (1, len(z))
+        
+        res = 46.1 * (M/1e12)**1.1 * (1 + 1.11 * z) * np.sqrt(Om0 *(1+z)**3 + Ode0)
+        
+        return res
+    
+    bar = MGR(M, z) * Ob_to_Om
+    
+    return bar 
+
+def 
+
 
 def SFRsub(params, model):
     """

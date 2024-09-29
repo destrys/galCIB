@@ -30,6 +30,7 @@ fsub = 0.134 # from Abhi's code, further note below.
 
 
 OmegaM0 = planck.Om0
+Ode0 = planck.Ode0
 H0 = planck.H0
 
 # linear power spectrum
