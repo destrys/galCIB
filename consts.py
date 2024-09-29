@@ -5,6 +5,7 @@ Helper function and constants for analysis
 from astropy.cosmology import Planck18 as planck
 from astropy import constants as apconst
 from scipy import constants as spconst
+import numpy as np
 import pandas as pd 
 import pickle
 
