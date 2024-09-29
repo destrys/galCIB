@@ -26,6 +26,7 @@ L_sun = consts.L_sun
 Ob_to_Om = dict_gal['Omegab_to_OmegaM_over_z']
 hp = consts.hp
 kB = consts.k_B
+fsub = consts.fsub
 
 #dust parameters
 dalpha = 0.36
@@ -186,7 +187,6 @@ def djc_dlogMh(nu, z, model, fsub = 0.134):
     # for a given halo mass, f_sub is calculated by taking the first moment
     # of the sub-halo mf and and integrating it over all the subhalo masses
     # and dividing it by the total halo mass.
-    fsub = 0.134
     
     #snu = self.snu #FIXME
     
@@ -209,6 +209,26 @@ def djc_dlogMh(nu, z, model, fsub = 0.134):
     
     return jc
 
+def djsub_dlogMh(params, model):
+    """
+    Returns the emissivity of satellite galaxies per log halo mass. 
+    
+    from A7 of 2204.05299
+    djsub_dlogMh (Mh, z) = chi^2 * (1+z) S^eff_nu (z) * int (dN_dlogm_sub (m_sub|Mh) * SFRsub/K * dlogm_sub)
+    
+    Args:
+        nu : measurement frequency 
+        z : redshift 
+        model : 'S12', 'M21' or 'Y23'
+    Returns:
+        jc : matrix of shape (nu, Mh, z)
+    """
+    
+    prefact = chi**2 * (1 + z)
+    prefact = prefact/KC
+    
+    sfrsub = SFRsub(params, model)
+     
 def SFRc(params, model):
     """
     Returns star formation rate of central galaxies as a function of halo parameters and model.
@@ -239,6 +259,23 @@ def SFRc(params, model):
     #return mhdot * f_b * sfrmhdot
     return res 
 
+def SFRsub(params, model):
+    """
+    Returns star formation rate of subhalos as a function of halo parameters and model.
+    """
+    
+    if model == 'S12':
+        # SFRC_s (Mh, z) propto Sigma_s (M,z) Phi (z) 
+        # from 2.34 of 2310.10848
+        
+        sigma_M0, mu_peak0, mu_peakp, delta = params
+        
+        phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
+        # Reshape phi(z) to broadcast across rows of Sigma
+        phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
+
+        sigma_sub = Sigmasub(sigma_M0, mu_peak0, mu_peakp) * phiCIB 
+           
 # DONE
 def phi_CIB(delta):
     """
@@ -278,7 +315,7 @@ def Sigmac(sigma_M0, mu_peak0, mu_peakp):
     
     return res
 
-def Sigmas(sigma_M0, mu_peak0, mu_peakp):
+def Sigmasub(sigma_M0, mu_peak0, mu_peakp):
     
     """
     Returns Luminosity-Mass relationship of satellite galaxies. 
@@ -311,17 +348,17 @@ def Sigmas(sigma_M0, mu_peak0, mu_peakp):
     
     # based on 12 of 0909.1325.
     #FIXME: is this the state of the art? 
-    def dN_sub_dlnm(m, M):
+    def subhmf(m, M):
         """Vectorized f function that takes m and M arrays."""
         res = 0.30 * (m/M[:, np.newaxis])**(-0.7)
         expterm = -9.9 * (m/M[:, np.newaxis])**2.5
-        return res * np.exp(expterm)
-    
+        return res * np.exp(expterm) ## FIXME: Abhi's subhmf code has additional * log(10)? 
+
     # Generate the 2D m grid for each Mh
     m_vals = log_m_range_vectorized(Mh)  # Shape (Mh, m) here m is of length num_points
 
     # Compute subhalo function (m, M)
-    subhalo_func = dN_sub_dlnm(m_vals, Mh)  # Shape (Mh, m)
+    subhalo_func = subhmf(m_vals, Mh)  # Shape (Mh, m)
     
     # Compute Sigma(m, z) for all m and z
     Sigma_vals =  Sigma(sigma_M0, mu_peak0, mu_peakp)
@@ -337,9 +374,7 @@ def Sigmas(sigma_M0, mu_peak0, mu_peakp):
     
     return res
 
-
-
-#DONE 
+# DONE 
 def Sigma(sigma_M0, mu_peak0, mu_peakp):
     """
     Returns the Luminosity-Mass relation.
@@ -370,33 +405,7 @@ def Sigma(sigma_M0, mu_peak0, mu_peakp):
     res = prefact * np.exp(expterm)
     
     return res
-    
-    
-    
 
-#FIXME: need to discuss with Abhi if we want to still use this model
-# def Theta(nu, z, beta, Td, gamma):
-#     """
-#     Returns the SED model of CIB-emitting haloes
-#     assuming gray-body spectrum.
-    
-#     Arguments:
-#         nu : frequency
-#         z : redshift
-#         beta : emissivity index, related to physical nature of dust
-#         Td : effective dust temperature
-#         gamma : power index 
-#     """
-    
-#     res = np.zeros_like(nu)
-#     flag = (nu < nu0) # freq below pivot freq nu0
-     
-#     # theta is proportional to the value but 
-#     # proportional constant absorbed by L0 normalization
-#     res[flag] = nu**beta * B(nu, Td)
-#     res[~flag] = nu**(-1 * gamma)
-    
-#     return res 
 
 # #FIXME
 # def Seff_planck():
@@ -495,50 +504,3 @@ def Sigma(sigma_M0, mu_peak0, mu_peakp):
 #         print("Seff model is not properly specified.")
     
 #     return SED
-
-
-
-
-
-# def djsub_dlogMh(fsub = 0.134): 
-    
-#     """
-#     for subhalos, the SFR is calculated in two ways and the minimum of the
-#     two is assumed.
-#     """
-    
-#     fsub = 0.134 #FIXME: take this out in the const file 
-#     # a = np.zeros((len(self.snu_eff[:, 0]), len(self.mh), len(self.z)))
-    
-#     snu = self.snu #FIXME: where is this coming from?
-#     chi = dict_gal['chi']
-#     z = dict_gal['z']
-
-#     prefact = chi**2 * (1 + z)
-#     prefact = prefact/KC
-    
-#     #FIXME: SFRc function will change as a function of models to be tested
-#     dlogmsub = #FIXME 
-#     integrand = dNdlogmsub(msub, Mh) * SFRsub(Mh, z)
-#     js = prefact * S_nu_eff(z) * simpson(integrand, dx = dlogmsub)
-        
-    
-#     #FIXME: understand the following     
-#         # snu = self.snu
-#         # a = np.zeros((len(snu[:, 0]), len(self.mh), len(self.z)))
-#         # # sfrmh = self.sfr(mh)
-#         # for i in range(len(self.mh)):
-#         #     ms = self.msub(self.mh[i]*(1-fsub))
-#         #     dlnmsub = np.log10(ms[1] / ms[0])
-#         #     sfrI = self.sfr(ms)  # dim(len(ms), len(z))
-#         #     sfrII = self.sfr(self.mh[i]*(1-fsub))*ms[:, None]/(self.mh[i]*(1-fsub))
-#         #     # sfrII = sfrmh[i] * ms / mh[i]
-#         #     sfrsub = np.zeros((len(ms), len(self.z)))
-#         #     for j in range(len(ms)):
-#         #         sfrsub[j, :] = np.minimum(sfrI[j, :], sfrII[j, :])
-#         #     integral = self.subhmf(self.mh[i], ms)[:, None]*sfrsub / KC
-#         #     intgn = intg.simps(integral, dx=dlnmsub, axis=0)
-#         #     a[:, i, :] = snu*(1 + self.z)*intgn *\
-#         #         self.cosmo.comoving_distance(self.z).value**2
-#         # return a
-    
