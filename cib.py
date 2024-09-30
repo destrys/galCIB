@@ -254,8 +254,8 @@ def SFRc(params, model):
         phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
         # Reshape phi(z) to broadcast across rows of Sigma
         phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
-        sigmac = Sigmac(sigma_M0, mu_peak0, mu_peakp)
-        sfrc =  sigmac * phiCIB 
+        sigma = Sigma(sigma_M0, mu_peak0, mu_peakp)
+        sfrc =  mean_N_IR_c * sigma * phiCIB 
     
     elif model == 'M21':
         #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)
@@ -280,7 +280,7 @@ def SFRc(params, model):
         
     return sfrc 
 
-
+# DONE
 def SFR(etamax, mu_peak0, mu_peakp, 
         sigma_M0, tau, zc):
     """
@@ -294,6 +294,7 @@ def SFR(etamax, mu_peak0, mu_peakp,
     
     return sfr
 
+# DONE
 def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
         tau, zc):
     """
@@ -329,7 +330,6 @@ def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
     
     return eta_val
 
-
 def SFRsub(params, model):
     """
     Returns star formation rate of subhalos as a function of halo parameters and model.
@@ -363,28 +363,6 @@ def phi_CIB(delta):
     phi = (1 + z)**delta
     
     return phi
-
-def Sigmac(sigma_M0, mu_peak0, mu_peakp):
-    
-    """
-    Returns Luminosity-Mass relationship of central galaxies. 
-    From 2.32 of 2310.10848.
-    
-    Sigma_c(M) = <N^IR_c (M)> Sigma(M).
-    
-    Args:
-        sigma_M0 : halo mass range contributing to IR emissivity 
-        mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
-        mu_peakp : rate of change of halo mass contributing to IR emissity at higher z 
-        
-    Returns:
-        res : of shape (Mh, z)
-    """
-    
-    #FIXME: is mean_N_IR_c same as the galaxy HOD sample? is it a function of z or just M?
-    res = mean_N_IR_c * Sigma(sigma_M0, mu_peak0, mu_peakp) 
-    
-    return res
 
 def Sigmasub(sigma_M0, mu_peak0, mu_peakp):
     

@@ -28,7 +28,6 @@ fsub = 0.134 # from Abhi's code, further note below.
 #         and dividing it by the total halo mass.
 
 
-
 OmegaM0 = planck.Om0
 Ode0 = planck.Ode0
 H0 = planck.H0
@@ -106,11 +105,11 @@ def BAR(M, z):
         M = M[:, np.newaxis]  # Shape (len(M), 1)
         z = z[np.newaxis, :]  # Shape (1, len(z))
         
-        res = 46.1 * (M/1e12)**1.1 * (1 + 1.11 * z) * np.sqrt(Om0 *(1+z)**3 + Ode0)
+        res = 46.1 * (M/1e12)**1.1 * (1 + 1.11 * z) * np.sqrt(OmegaM0 *(1+z)**3 + Ode0)
         
         return res
     
-    bar = MGR(M, z) * Ob_to_Om
+    bar = MGR(M, z) * Omegab_to_OmegaM_over_z
     
     return bar
 
