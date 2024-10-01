@@ -17,9 +17,13 @@ from scipy.special import lambertw
 c_light = consts.speed_of_light
 c_light_kms = c_light/1000
 Mh = consts.Mh
-hmfz = consts.hmfz
+Mhc = consts.Mhc # central galaxies halo mass based on fsub
+ms = consts.ms # subhalo mass grid based on fsub
+ms_to_Mhc = consts.ms_to_Mhc # subhalo mass grid as a fraction with Mhc
+hmfz = consts.hmfz # halo mass function
+subhalomf = consts.subhalomf # subhalo mass function
 dict_gal = consts.dict_gal['ELG']
-chi = dict_gal['chi']
+chi = dict_gal['chi'] # comoving distance
 z = dict_gal['z']
 KC = consts.KC
 L_sun = consts.L_sun
@@ -29,7 +33,8 @@ kB = consts.k_B
 fsub = consts.fsub
 Om0 = consts.OmegaM0
 Ode0 = consts.Ode0
-bar = consts.bar
+bar_c = consts.bar_c
+bar_sub = consts.bar_sub
 
 #dust parameters
 dalpha = 0.36
@@ -61,10 +66,17 @@ def B_nu(nu, Td):
     Returns:
         res : of shape (nu, z)
     """
+    # Pre-factor depending only on nu, shape (M, N)
+    prefact = 2. * hp * nu**3 / c_light**2
+
+    # Ensure Td is broadcast correctly along the redshift dimension
+    Td_broadcasted = Td[np.newaxis, :]  # Shape (1, N), so it broadcasts over M
     
-    prefact = 2.*hp*nu**3/c_light**2
-    x = np.outer(hp * nu, 1/(kB * Td)) #broadcast to shape (nu, z)
-    res = prefact[:,np.newaxis]/(np.exp(x) - 1)
+    # Calculate the exponential term
+    x = (hp * nu) / (kB * Td_broadcasted)  # Shape (M, N)
+
+    # Compute the Planck function
+    res = prefact / (np.exp(x) - 1)  # Shape (M, N)
     
     return res
 
@@ -81,7 +93,7 @@ def mod_blackbody(Bnu, nu):
     """
     
     res = Bnu
-    res = res * (nu**dbeta)[:,np.newaxis] # broadcast for proper shape
+    res = res * (nu**dbeta)
     
     return res
 
@@ -109,7 +121,6 @@ def nu0_z(Td):
     nu0z = np.real(x * (kB * Td)/hp)
     return nu0z
 
-
 def Theta(mod_Bnu, Bnu_at_nu0, nu, nu0):
     """
     Returns the modified SED for gray-body function normalized to 1 at pivot freq.
@@ -125,10 +136,35 @@ def Theta(mod_Bnu, Bnu_at_nu0, nu, nu0):
     # calculating only for nu < nu0
     # normalised SED such that theta(nu0) = 1
     
+    # num = self.mod_blackbody(nu, z)
+    # # nu0 = 2000*1.e9  # Hz => approximately taken from Fig.1 of 2010.16405
+    # nu0z = self.nu0_z(z)
+    # denom = self.mod_blackbody(nu0z, z)
+    
     theta = mod_Bnu/Bnu_at_nu0 
     #theta[nu >= nu0] = 
     #FIXME: why not the nu >= nu0 SED? 
     return theta
+
+def Seff(nu, model):
+    """
+    Returns the effective spectral energy distribution (SED) 
+    which is the fraction of IR radiation at the
+    rest-frame frequency (1 + z)nu. 
+    
+    It is defined as the mean flux density per total solar luminosity.
+    """
+    
+    if (model == 'S12') | (model == 'Y23'):
+        seff = Theta((1 + z)*nu, z) 
+        seff = seff/(1 + z)
+        seff = seff/chi**2
+    elif model == 'M23':
+        seff = 'ok' # FIXME: process data
+    else:
+        print("Not correct model.")
+        
+    return seff  
 
 ## end of parametric dust model functions
 
@@ -168,7 +204,7 @@ def jbar(nu):
     res = simpson(integrand, dx=dm, axis = 1)
     return res
 
-def djc_dlogMh(nu, z, model, fsub = 0.134):
+def djc_dlogMh(params, nu, z, model):
     """
     Returns the emissivity of central galaxies per log halo mass. 
     
@@ -176,6 +212,7 @@ def djc_dlogMh(nu, z, model, fsub = 0.134):
     djc_dlogMh (Mh, z) = chi^2 * (1+z) * SFRc/K * S^eff_nu (z)
     
     Args:
+        params : SFR model parameters, depends on model
         nu : measurement frequency 
         z : redshift 
         model : 'S12', 'M21' or 'Y23'
@@ -198,21 +235,14 @@ def djc_dlogMh(nu, z, model, fsub = 0.134):
     prefact = chi**2 * (1 + z)
     prefact = prefact/KC
     
-    
-    
     #FIXME: SFRc function will change as a function of models to be tested
     # prefact[z], SFRc[M, z], Seff[nu, z]
-    jc = np.zeros(((len(nu_list), len(Mh), len(z)))) #FIXME correct variable names
-    jc = prefact * SFRc(Mh * (1-fsub)) * Seff(nu, z, model)   
+    #FIXME: precalculate Mh * (1 - fsub) for speedup
+    jc = np.zeros(((len(nu_list), len(Mhc), len(z)))) #FIXME correct variable names
     
-    #---- look at the code below to understand order of operation 
-    # a = np.zeros((len(snu[:, 0]), len(self.mh), len(self.z)))
-    # rest = self.sfr(self.mh*(1-fsub))*(1 + self.z) *\
-    #     self.cosmo.comoving_distance(self.z).value**2/KC
-    # # print (rest[50, 10:13])
-    # for f in range(len(snu[:, 0])):
-    #     a[f, :, :] = rest*snu[f, :]
-    # return a #jc for us 
+    sfrc = SFRc(params, model)
+    seff = Seff(nu, z, model)   
+    jc = prefact * sfrc * seff
     
     return jc
 
@@ -232,16 +262,85 @@ def djsub_dlogMh(params, model):
     """
     
     prefact = chi**2 * (1 + z)
-    prefact = prefact/KC
+    prefact = prefact/KC # shape (z,)
     
+    # integral in A7 of 2204.05299
     sfrsub = SFRsub(params, model)
+    integrand = sfrsub * np.expand_dims(subhalomf, axis = -1)
+    integral = simpson(y=integrand,
+                       x = np.expand_dims(np.log10(ms), axis = -1),
+                       axis = 0) # integrate along the ms axis, shape (Mh, z)
+    
+    # effective SED
+    seff = "ok" #FIXME
+    
+    # jsub of shape (nu, Mh, z)
+    jsub = prefact * integral * seff
+    
+    return jsub
+    
+def SFRsub(params, model):
+    """
+    Returns SFR of subhalos. 
+    """
+    if (model == 'S12'):
+        # SFR_s (Mh, z) propto Sigma_s (M,z) Phi (z) 
+        # from 2.34 of 2310.10848
         
+        sigma_M0, mu_peak0, mu_peakp, delta = params
+        
+        phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
+        # Reshape phi(z) to broadcast across rows of Sigma
+        phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
+        sigma = Sigma(sigma_M0, mu_peak0, mu_peakp)
+        sfrc =  mean_N_IR_c * sigma * phiCIB 
+        
+    elif (model == 'M21'):
+        # from 2.41 of 2310.10848
+        # SFRs (m|M) = min(SFR(m), m/M * SFR(M))
+        
+        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc = params
+        
+        option1 = SFR(etamax, mu_peak0, mu_peakp, 
+                      sigma_M0, tau, zc,
+                      is_sub = True)
+        
+        option2 = ms_to_Mhc[:,:,np.newaxis] * SFR(etamax, mu_peak0, 
+                                                  mu_peakp, sigma_M0, 
+                                                  tau, zc, 
+                                                  is_sub = False)[np.newaxis,:,:] # proper broadcasting to get shape (ms, Mh, z)
+        
+        sfrs = np.minimum(option1, option2)
+        
+        return sfrs
+    
+    elif (model == 'Y23'):
+        mu_peak0, mu_peakp, sigma_M0, tau, zc = params
+        
+        option1 = SFR(etamax=1, mu_peak0=mu_peak0,
+                      mu_peakp=mu_peakp, sigma_M0=sigma_M0,
+                      tau=tau, zc=zc,
+                      is_sub = True)
+        
+        option2 = ms_to_Mhc[:,:,np.newaxis] * SFR(etamax=1, 
+                                                  mu_peak0=mu_peak0,
+                                                  mu_peakp=mu_peakp,
+                                                  sigma_M0=sigma_M0,
+                                                  tau=tau, zc=zc,
+                                                  is_sub = False)[np.newaxis,:,:] # proper broadcasting to get shape (ms, Mh, z)
+        
+        sfrs = np.minimum(option1, option2)
+        
+        return sfrs
+    
+## star-formation history functions        
 def SFRc(params, model):
     """
     Returns star formation rate of central galaxies as a function of halo parameters and model.
     
     Args:
         params : model parameters
+        Mhc : halo mass of central galaxies
         model : model name 
     """
     
@@ -282,21 +381,28 @@ def SFRc(params, model):
 
 # DONE
 def SFR(etamax, mu_peak0, mu_peakp, 
-        sigma_M0, tau, zc):
+        sigma_M0, tau, zc, is_sub = False):
     """
     Returns star formation rate for models
     M21 and Y23.
+    
+    Args:
+        is_sub : flag for whether SFR is for subhaloes
     """
     
     eta_val = eta(etamax, mu_peak0, mu_peakp, 
-                  sigma_M0, tau, zc) 
-    sfr = eta_val * bar
+                  sigma_M0, tau, zc, is_sub = is_sub) 
     
+    if is_sub:
+        sfr = eta_val * bar_sub 
+    else:
+        sfr = eta_val * bar_c
+
     return sfr
 
 # DONE
 def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
-        tau, zc):
+        tau, zc, is_sub):
     """
     Returns star formation efficiency parameter.
     
@@ -312,41 +418,30 @@ def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
         sigma_M0 : halo mass range contributing to IR emissivity below peak mass
         zc : the redshift below which the mass window for star formation starts to evolve
         tau : rate of zc evolution 
+        is_sub : flag for whether this applies to subhaloes
     
     Returns:
         eta_val : of shape (Mh, z)
     """
     
-    # Reshape Mh and z for broadcasting
-    M_re = Mh[:, np.newaxis]  # Shape (len(M), 1)
+    # Reshape M and z for broadcasting
+    if is_sub:
+        M_re = np.expand_dims(ms, axis = -1) # Shape (ms, Mh, 1)
+    else:
+        M_re = np.expand_dims(Mhc, axis = -1) # Shape (Mh, 1)
     z_re = z[np.newaxis, :]  # Shape (1, len(z))
     
     Mpeak = mu_peak0 + mu_peakp * z_re/(1+z_re) # M_peak may change with z 
     
     # parametrization based on 2.39 of 2310.10848.
-    sigmaM = np.where(M_re < Mpeak, sigma_M0, sigma_M0 * (1 - tau/zc * np.maximum(0, zc - z_re)))  # Shape (len(M), len(z))
+    sigmaM = np.where(M_re < Mpeak, sigma_M0, 
+                      sigma_M0 * (1 - tau/zc * 
+                                  np.maximum(0, zc - z_re)))  # Shape (len(M), len(z))
     
     eta_val = etamax * np.exp(-0.5 * ((np.log(M_re) - np.log(Mpeak))/sigmaM)**2)
     
     return eta_val
-
-def SFRsub(params, model):
-    """
-    Returns star formation rate of subhalos as a function of halo parameters and model.
-    """
-    
-    if model == 'S12':
-        # SFRC_s (Mh, z) propto Sigma_s (M,z) Phi (z) 
-        # from 2.34 of 2310.10848
-        
-        sigma_M0, mu_peak0, mu_peakp, delta = params
-        
-        phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
-        # Reshape phi(z) to broadcast across rows of Sigma
-        phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
-
-        sigma_sub = Sigmasub(sigma_M0, mu_peak0, mu_peakp) * phiCIB 
-           
+         
 # DONE
 def phi_CIB(delta):
     """
@@ -394,14 +489,6 @@ def Sigmasub(sigma_M0, mu_peak0, mu_peakp):
         log_m_vals = M_log_min + (np.linspace(0, 1, num_points) * (M_log_vals[:, np.newaxis] - M_log_min))  # Shape (len(M), num_points)
         m_vals = np.exp(log_m_vals)  # Convert back to m values
         return m_vals  # Shape (len(M), num_points)
-    
-    # based on 12 of 0909.1325.
-    #FIXME: is this the state of the art? 
-    def subhmf(m, M):
-        """Vectorized f function that takes m and M arrays."""
-        res = 0.30 * (m/M[:, np.newaxis])**(-0.7)
-        expterm = -9.9 * (m/M[:, np.newaxis])**2.5
-        return res * np.exp(expterm) ## FIXME: Abhi's subhmf code has additional * log(10)? 
 
     # Generate the 2D m grid for each Mh
     m_vals = log_m_range_vectorized(Mh)  # Shape (Mh, m) here m is of length num_points
@@ -444,7 +531,7 @@ def Sigma(sigma_M0, mu_peak0, mu_peakp):
     M_peak = mu_peak0 + mu_peakp * z/(1+z) # M_peak may change with z 
 
     # broadcast properly since Sigma is of shape (Mh, z)
-    M = Mh[:, np.newaxis] # Make M a column vector of shape (len(Mh), 1)
+    M = Mhc[:, np.newaxis] # Make M a column vector of shape (len(Mh), 1)
     M_peak_z = M_peak[np.newaxis, :]  # Make M_peak(z) a row vector of shape (1, len(z))
     
     prefact = M/np.sqrt(2 * np.pi * sigma_M0**2)

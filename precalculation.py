@@ -21,12 +21,16 @@ dict_gal = consts.dict_gal['ELG']
 z = dict_gal['z']
 
 ## pre-calculate necessary variables from cib.py
-# Planck frequencies for CIB are: (100, 143, 217, 353, 545, 857) and IRAS (3000) GHz frequencies
-nu_list = np.array([100, 143, 217, 353, 545, 857, 3000]) * 1e9   # convert GHz to Hz 
+# Planck frequencies for CIB are: (100, 143, 217, 353, 545, 857) GHz frequencies
+nu_list = np.array([100, 143, 217, 353, 545, 857]) * 1e9   # convert GHz to Hz 
 
-Td = cib.Tdust(z) # dust temperature in gal. bins
-Bnu = cib.B_nu(nu_list, Td)
-mod_Bnu = cib.mod_blackbody(Bnu, nu_list)
+# nu_prime = (1 + z) * nu
+# broad cast properly to get nu_prime_list of shape (nu, z)
+nu_prime_list = nu_list[:, np.newaxis] * (1 + z[np.newaxis, :])
+
+Td = cib.Tdust(z) # dust temperature in gal. bins, shape (z,)
+Bnu = cib.B_nu(nu_prime_list, Td) # Planck function, shape (nu, z)
+mod_Bnu = cib.mod_blackbody(Bnu, nu_prime_list)
 nu0_z = cib.nu0_z(Td)
 
 # normalization factor for Theta

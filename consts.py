@@ -42,6 +42,29 @@ with open('data/hmfz.p', 'rb') as handle:
 Mh = hmfz_dict['Mh']
 hmfz = hmfz_dict['hmfz']
 
+# pre-calculate central halo mass Mhc = Mh * (1 - fsub)
+Mhc = Mh * (1 - fsub)
+
+# define subhalo mass function grid 
+log10ms_min = 6 # Msun according to pg 11 of 2310.10848 
+num_points = 100 # number of subhalo masses sampled for given Mh
+ms = np.logspace(log10ms_min, np.log10(Mhc), num_points)
+
+# ratio of ms to Mhc, needed in SFRsub calculation.
+ms_to_Mhc = ms/np.expand_dims(Mhc, axis = 0) 
+
+# subhalo mass function
+# based on 12 of 0909.1325.
+#FIXME: is this the state of the art? 
+def subhmf(m, M):
+    """Vectorized f function that takes m and M arrays."""
+    mass_ratio = m/M[np.newaxis, :]
+    res = 0.30 * (mass_ratio)**(-0.7)
+    expterm = -9.9 * (mass_ratio)**2.5
+    return res * np.exp(expterm) ## FIXME: Abhi's subhmf code has additional * log(10)? 
+
+subhalomf = subhmf(ms, Mh)
+
 # store all relevant galaxy information
 dict_gal = {}
 
@@ -102,7 +125,7 @@ def BAR(M, z):
         """
         
         # Reshape M and z to enable broadcasting
-        M = M[:, np.newaxis]  # Shape (len(M), 1)
+        M = np.expand_dims(M, axis = -1)  # Shape ((shape of M), 1)
         z = z[np.newaxis, :]  # Shape (1, len(z))
         
         res = 46.1 * (M/1e12)**1.1 * (1 + 1.11 * z) * np.sqrt(OmegaM0 *(1+z)**3 + Ode0)
@@ -113,4 +136,7 @@ def BAR(M, z):
     
     return bar
 
-bar = BAR(Mh, dict_gal['ELG']['z'])
+# pre-calculate BAR of central and sub haloes based on fsub 
+bar_c = BAR(Mhc, dict_gal['ELG']['z']) # shape (Mh, z)
+bar_sub = BAR(ms, dict_gal['ELG']['z']) #shape (ms, Mh, z)
+
