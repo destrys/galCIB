@@ -13,6 +13,8 @@ import pickle
 speed_of_light = spconst.c # in SI units
 k_B = spconst.k # Boltzmann constant in SI units
 hp = spconst.h # Planck's constant in SI units
+hp_over_kB = hp/k_B # h/kB for faster calculation of h/k * nu/T
+hp_times_2_over_c2 = 2*hp/speed_of_light**2 # 2h/c^2 for faster calculation
 
 KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * Lsol^-1
 L_sun = 3.828e26 # From Abhishek's code 
@@ -136,7 +138,15 @@ def BAR(M, z):
     
     return bar
 
+redz = dict_gal['ELG']['z'] #FIXME: needs to be changed/refactored to deal with other samples
 # pre-calculate BAR of central and sub haloes based on fsub 
-bar_c = BAR(Mhc, dict_gal['ELG']['z']) # shape (Mh, z)
-bar_sub = BAR(ms, dict_gal['ELG']['z']) #shape (ms, Mh, z)
+bar_c = BAR(Mhc, redz) # shape (Mh, z)
+bar_sub = BAR(ms, redz) #shape (ms, Mh, z)
 
+## pre-calculate S_eff variables (parametrized version)
+# Planck frequencies for CIB are: (100, 143, 217, 353, 545, 857) GHz frequencies
+nu_list = np.array([100, 143, 217, 353, 545, 857]) * 1e9   # convert GHz to Hz 
+
+# nu_prime = (1 + z) * nu
+# broad cast properly to get nu_prime_list of shape (nu, z)
+nu_primes = nu_list[:, np.newaxis] * (1 + redz[np.newaxis, :])

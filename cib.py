@@ -14,36 +14,41 @@ from scipy.interpolate import RectBivariateSpline
 # Lambert W function solver
 from scipy.special import lambertw
 
+# physical constants
 c_light = consts.speed_of_light
 c_light_kms = c_light/1000
+KC = consts.KC
+L_sun = consts.L_sun
+hp = consts.hp
+kB = consts.k_B
+hp_over_kB = consts.hp_over_kB
+hp_times_2_over_c2 = consts.hp_times_2_over_c2
+
+# cosmology constants
+Om0 = consts.OmegaM0
+Ode0 = consts.Ode0
+bar_c = consts.bar_c
+bar_sub = consts.bar_sub
+
+# halo constants
 Mh = consts.Mh
 Mhc = consts.Mhc # central galaxies halo mass based on fsub
 ms = consts.ms # subhalo mass grid based on fsub
 ms_to_Mhc = consts.ms_to_Mhc # subhalo mass grid as a fraction with Mhc
 hmfz = consts.hmfz # halo mass function
 subhalomf = consts.subhalomf # subhalo mass function
+
+# galaxy constants
 dict_gal = consts.dict_gal['ELG']
 chi = dict_gal['chi'] # comoving distance
 z = dict_gal['z']
-KC = consts.KC
-L_sun = consts.L_sun
-Ob_to_Om = dict_gal['Omegab_to_OmegaM_over_z']
-hp = consts.hp
-kB = consts.k_B
-fsub = consts.fsub
-Om0 = consts.OmegaM0
-Ode0 = consts.Ode0
-bar_c = consts.bar_c
-bar_sub = consts.bar_sub
 
-#dust parameters
-dalpha = 0.36
-dT0 = 24.4 # Planck CIB 2013
-dbeta = 1.75 
+# SED constants
 dgamma = 1.7
+nu_primes = consts.nu_primes
 
 ## parametric dust model functions 
-def Tdust(z):
+def Tdust(T0, alpha):
     """
     Returns dust temp as a function of z.
     From 1309.0382.
@@ -52,7 +57,7 @@ def Tdust(z):
         res: of shape (z,)
     """
 
-    res = dT0*(1. + z)**dalpha
+    res = T0*(1. + z)**alpha
     return res
 
 def B_nu(nu, Td):
@@ -60,105 +65,138 @@ def B_nu(nu, Td):
     Returns Planck's blackbody function.
     
     Args:
-        nu : frequency array in Hz
-        Td : dust temperature 
+        nu : frequency array in Hz of shape (nu, z)
+        Td : dust temperature  of shape (z,)
         
     Returns:
         res : of shape (nu, z)
     """
-    # Pre-factor depending only on nu, shape (M, N)
-    prefact = 2. * hp * nu**3 / c_light**2
+    # Pre-factor depending only on nu, shape (nu, z)
+    prefact = hp_times_2_over_c2 * nu**3
 
     # Ensure Td is broadcast correctly along the redshift dimension
-    Td_broadcasted = Td[np.newaxis, :]  # Shape (1, N), so it broadcasts over M
+    Td_re = Td[np.newaxis, :]  # Shape (1, z)
     
     # Calculate the exponential term
-    x = (hp * nu) / (kB * Td_broadcasted)  # Shape (M, N)
+    x = hp_over_kB * nu/Td_re # Shape (nu, z)
 
     # Compute the Planck function
-    res = prefact / (np.exp(x) - 1)  # Shape (M, N)
+    res = prefact / (np.exp(x) - 1)  # Shape (nu, z)
     
     return res
 
-def mod_blackbody(Bnu, nu):
-    
-    """
-    Returns gray-body function. 
-    
-    Args:
-        Bnu : Planck function of shape (nu, z)
-        nu : freq. array matching Bnu axis 0 binning of nu
-    Returns:
-        res : modified Planck func of shape (nu, z)
-    """
-    
-    res = Bnu
-    res = res * (nu**dbeta)
-    
-    return res
-
-def nu0_z(Td):
+def nu0_z(beta, Td):
     """
     Returns the pivot frequency as a function of redshift.
     
-    For modified blackboy approximation, we have dlntheta/dlnnu = -gamma for nu=nu0.
-    Here theta is the modified blackbody spectrum. In order to find nu0
-    which isredshift dependent, we need to take a derivative and solve
-    for this numerically. In the end it comes out in the form
-    (x-(3+beta+gamma))e(x-(3+beta+gamma)) = -(3+beta+gamma)e(-(3+beta+gamma))
-    The solution is x-(3+beta+gamma) = W(-(3+beta+gamma)e(-(3+beta+gamma)))
-    here W is Lambert's W fnction which is implemented in scipy.
-    x = hnu/KT
+    For modified blackboy approximation, 
+    we have dln[v^beta * B_nu(Td)]/dlnnu = -gamma 
+    for nu=nu0 from 2.27 of 2310.10848.
+    
+    In order to find nu0 which is redshift dependent, we need to 
+    use the Lambert W function. of the form x = a + be^(c*x). 
+    Solution is given by: x = a - W(-bce^(ac))/c, check 
+    https://docs.scipy.org/doc/scipy-1.13.0/reference/generated/scipy.special.lambertw.html
+    for reference. 
+    
+    Here, x = nu0, a = K/h_KT, b = -a, c = -h_KT,
+    where K = (gamma + beta + 3) and h_KT = h/(KT)
     
     Args:
-        Td : dust temperature of shape (z,)
+        beta: controls "grayness" of blackbody function
+        Td: dust temperature as a function of z
+    Returns:
+        nu0z: pivot frequencies as a function of redshift. Shape (z,)
     """
     
     #FIXME: is this actually smoothly connecting?
-    y = -(3 + dbeta + dgamma) * np.exp(-(3 + dbeta + dgamma))
-    xx = lambertw(y)
-    x = xx + (3 + dbeta + dgamma)
-    nu0z = np.real(x * (kB * Td)/hp)
+    
+    h_kT = hp_over_kB/Td # shape (z,)
+    K = (dgamma + beta + 3)
+    
+    a = K/h_kT
+    b = -1 * a
+    c = -1 * h_kT
+    
+    x = a - lambertw(-b*c*np.exp(a*c))/c
+    nu0z = np.real(x) # only take the real value
+    
     return nu0z
 
-def Theta(mod_Bnu, Bnu_at_nu0, nu, nu0):
+# DONE
+def Theta(params):
     """
-    Returns the modified SED for gray-body function normalized to 1 at pivot freq.
+    Returns the modified SED for gray-body function 
+    normalized to 1 at pivot freq.
+    
+    From 2.27 of 2310.10848.
+    
+    theta(nu') = nu'^beta * B_nu' (T) for n < nu0
+               = nu'^(-gamma) for n >= nu0
     
     Args:
-        mod_Bnu : gray-body function 
-        Bnu_at_nu0 : gray-body value at pivot freq. 
+        params: (beta, T0, alpha)
+            beta: controls "grayness" of blackbody function
+            T0, alpha: dust parameters
+
     """
+    
+    beta, T0, alpha = params
+    theta = np.zeros_like(nu_primes) # shape (nu, z)
+    Td = Tdust(T0, alpha)
+    nu0z = nu0_z(beta, Td)
+    
+    def prenu0(beta, Td, nu):
+        """
+        Returns the gray-body part of the SED.
+        """
+        
+        res = nu**beta * B_nu(nu, Td)
+        
+        return res 
+        
+    def postnu0(gamma, nu):
+        """
+        Returns the exponential decay part of the SED.
+        """
+        
+        res = nu**(-gamma)
+        
+        return res
+    
+    # calculate SED 
+    flag = nu_primes < nu0z[np.newaxis, :]
+    theta = np.where(flag, 
+                     prenu0(beta, Td, nu_primes), 
+                     postnu0(dgamma, nu_primes))
 
-    #theta(nu') = nu'**beta * Bnu(Td) nu < nu0
-    #theta(nu') = nu'**(-gamma) nu>= nu0
+    # normalize SED such that theta(nu0) = 1
+    theta_normed = np.where(flag, 
+         theta/prenu0(beta, Td, nu0z[np.newaxis, :]),
+         theta/postnu0(dgamma, nu0z[np.newaxis, :]))
     
-    # calculating only for nu < nu0
-    # normalised SED such that theta(nu0) = 1
-    
-    # num = self.mod_blackbody(nu, z)
-    # # nu0 = 2000*1.e9  # Hz => approximately taken from Fig.1 of 2010.16405
-    # nu0z = self.nu0_z(z)
-    # denom = self.mod_blackbody(nu0z, z)
-    
-    theta = mod_Bnu/Bnu_at_nu0 
-    #theta[nu >= nu0] = 
-    #FIXME: why not the nu >= nu0 SED? 
-    return theta
+    return theta_normed
 
-def Seff(nu, model):
+def Seff(params, model):
     """
     Returns the effective spectral energy distribution (SED) 
     which is the fraction of IR radiation at the
     rest-frame frequency (1 + z)nu. 
     
     It is defined as the mean flux density per total solar luminosity.
+    
+    Args:
+        params: (beta, T0, alpha)
+            beta: controls "grayness" of blackbody function
+            T0, alpha: dust parameters
+    Returns:
+        seff : of shape (nu, z)
     """
     
     if (model == 'S12') | (model == 'Y23'):
-        seff = Theta((1 + z)*nu, z) 
-        seff = seff/(1 + z)
-        seff = seff/chi**2
+        beta, T0, alpha = params
+        seff = Theta(params)
+        
     elif model == 'M23':
         seff = 'ok' # FIXME: process data
     else:
