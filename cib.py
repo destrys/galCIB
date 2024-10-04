@@ -8,9 +8,6 @@ import consts
 # integrates using simpson method 
 from scipy.integrate import simpson
 
-# bivariate interpolation over a rectangular mesh
-from scipy.interpolate import RectBivariateSpline
-
 # Lambert W function solver
 from scipy.special import lambertw
 
@@ -47,7 +44,8 @@ z = dict_gal['z']
 dgamma = 1.7
 nu_primes = consts.nu_primes
 
-## parametric dust model functions 
+###--START OF S_eff MODELING--###
+
 def Tdust(T0, alpha):
     """
     Returns dust temp as a function of z.
@@ -123,7 +121,6 @@ def nu0_z(beta, Td):
     
     return nu0z
 
-# DONE
 def Theta(params):
     """
     Returns the modified SED for gray-body function 
@@ -138,7 +135,8 @@ def Theta(params):
         params: (beta, T0, alpha)
             beta: controls "grayness" of blackbody function
             T0, alpha: dust parameters
-
+    Returns:
+        theta_normed : of shape (nu, z)
     """
     
     beta, T0, alpha = params
@@ -194,17 +192,16 @@ def Seff(params, model):
     """
     
     if (model == 'S12') | (model == 'Y23'):
-        beta, T0, alpha = params
         seff = Theta(params)
         
     elif model == 'M23':
-        seff = 'ok' # FIXME: process data
+        seff = consts.snu_eff_M23_ELG_z_bins
     else:
         print("Not correct model.")
         
     return seff  
 
-## end of parametric dust model functions
+###--END OF S_eff MODELING--###
 
 def window_cib(nu, z):
     """
@@ -219,7 +216,7 @@ def window_cib(nu, z):
     
     return w_cib
 
-def jbar(nu):
+def jbar(params, model):
     """
     Returns the mean emissivity of the CIB halos.
     
@@ -232,9 +229,23 @@ def jbar(nu):
     """
     
     ##FIXME: maybe calculate phiCIB here and pass it down to relevant functions
+    ## FIXME: phiCIB only needed if we test model S12
+    
+    if (model == 'S21') | (model == 'Y23'):
+        params_sfr = params[:-3] 
+        params_seff = params[-3:] # last three params
+        seff = Seff(params_seff, model = model) # shape (nu, z)
+    elif model == 'M23':
+        params_sfr = params
+        #FIXME: call fitted seff here. 
+    else:
+        print("Did not input correct model.")
+    
     
     #djc/s returns of the shape (nu, Mh, z)
-    djdlogmh = djc_dlogMh(nu) + djsub_dlogMh(nu) #FIXME
+    djdlogmh = djc_dlogMh(params_sfr, seff, 
+                          model) + djsub_dlogMh(params_sfr, seff,
+                                                model)
     dm = np.log10(Mh[1]/Mh[0])
     integrand = djdlogmh*hmfz
     
@@ -242,7 +253,7 @@ def jbar(nu):
     res = simpson(integrand, dx=dm, axis = 1)
     return res
 
-def djc_dlogMh(params, nu, z, model):
+def djc_dlogMh(params_sfr, seff, model):
     """
     Returns the emissivity of central galaxies per log halo mass. 
     
@@ -250,9 +261,8 @@ def djc_dlogMh(params, nu, z, model):
     djc_dlogMh (Mh, z) = chi^2 * (1+z) * SFRc/K * S^eff_nu (z)
     
     Args:
-        params : SFR model parameters, depends on model
-        nu : measurement frequency 
-        z : redshift 
+        params : SFR and Seff model parameters, depends on model
+            order is [beta, T0, alpha]
         model : 'S12', 'M21' or 'Y23'
     Returns:
         jc : matrix of shape (nu, Mh, z)
@@ -268,23 +278,21 @@ def djc_dlogMh(params, nu, z, model):
     # of the sub-halo mf and and integrating it over all the subhalo masses
     # and dividing it by the total halo mass.
     
-    #snu = self.snu #FIXME
-    
     prefact = chi**2 * (1 + z)
-    prefact = prefact/KC
+    prefact = prefact/KC # shape (z,)
     
-    #FIXME: SFRc function will change as a function of models to be tested
-    # prefact[z], SFRc[M, z], Seff[nu, z]
-    #FIXME: precalculate Mh * (1 - fsub) for speedup
-    jc = np.zeros(((len(nu_list), len(Mhc), len(z)))) #FIXME correct variable names
+    sfrc = SFRc(params_sfr, model) #shape (Mh, z)
     
-    sfrc = SFRc(params, model)
-    seff = Seff(nu, z, model)   
-    jc = prefact * sfrc * seff
+    # broadcast properly for multiplication
+    sfrc_re = sfrc[np.newaxis, :, :] # shape (1, Mh, z)
+    seff_re = seff[:, np.newaxis, :] # shape (nu, 1, z)
+    prefact_re = prefact[np.newaxis, np.newaxis, :] # shape (1, 1, z)
+    
+    jc = prefact_re * sfrc_re * seff_re
     
     return jc
 
-def djsub_dlogMh(params, model):
+def djsub_dlogMh(params_sfr, seff, model):
     """
     Returns the emissivity of satellite galaxies per log halo mass. 
     
@@ -303,17 +311,19 @@ def djsub_dlogMh(params, model):
     prefact = prefact/KC # shape (z,)
     
     # integral in A7 of 2204.05299
-    sfrsub = SFRsub(params, model)
+    sfrsub = SFRsub(params_sfr, model)
     integrand = sfrsub * np.expand_dims(subhalomf, axis = -1)
     integral = simpson(y=integrand,
                        x = np.expand_dims(np.log10(ms), axis = -1),
                        axis = 0) # integrate along the ms axis, shape (Mh, z)
     
-    # effective SED
-    seff = "ok" #FIXME
+    # broadcast shapes properly for multiplication
+    prefact_re = prefact[np.newaxis, np.newaxis, :] # shape (1,1,z)
+    integral_re = integral[np.newaxis, :, :] #shape (1,Mh,z)
+    seff_re = seff[:, np.newaxis, :]
     
     # jsub of shape (nu, Mh, z)
-    jsub = prefact * integral * seff
+    jsub = prefact_re * integral_re * seff_re
     
     return jsub
     
@@ -579,102 +589,3 @@ def Sigma(sigma_M0, mu_peak0, mu_peakp):
     res = prefact * np.exp(expterm)
     
     return res
-
-
-# #FIXME
-# def Seff_planck():
-#     """
-#     Returns the effective SEDs for the CIB for 
-#     Planck (100, 143, 217, 353, 545, 857) and
-#     IRAS (3000) GHz frequencies.
-    
-#     Args: 
-    
-#     Returns:
-#         unfiltered_snu : spline approximant function that takes (nu, z)
-#     """
-    
-#     def L_IR(snu_eff, freq_rest, redshifts): #FIXME: explanation
-#         """
-#         Returns ??
-#         """
-        
-#         fmax = 3.7474057250000e13  # 8 microns in Hz
-#         fmin = 2.99792458000e11  # 1000 microns in Hz
-#         no = 10000
-#         fint = np.linspace(np.log10(fmin), np.log10(fmax), no)
-#         L_IR_eff = np.zeros((len(redshifts)))
-#         dfeq = np.array([0.]*no, dtype=float)
-#         for i in range(len(redshifts)):
-#             L_feq = snu_eff[:, i]*4*np.pi*(Mpc_to_m*cosmo.luminosity_distance(redshifts[i]).value)**2/(w_jy*(1+redshifts[i]))
-#             Lint = np.interp(fint, np.log10(np.sort(freq_rest[:, i])),
-#                                 L_feq[::-1])
-#             dfeq = 10**(fint)
-#             L_IR_eff[i] = np.trapz(Lint, dfeq)
-#         return L_IR_eff
-    
-#     list_of_files = sorted(glob.glob('./data/TXT_TABLES_2015/./*.txt'))
-#     a = list_of_files[95] #FIXME: why 95 and 96
-#     b = list_of_files[96]
-    
-#     for i in range(95, 208): #FIXME: why this range 
-#         list_of_files[i] = list_of_files[i+2]
-#     list_of_files[208] = a
-#     list_of_files[209] = b
-
-#     # wavelengths are in microns
-#     wavelengths = np.loadtxt('./data/TXT_TABLES_2015/EffectiveSED_B15_z0.012.txt')[:,[0]]
-    
-#     # Need freq in GHz so multiply by the following numerical factor 
-#     freq = c_light_kms/wavelengths
-#     numerical_fac = 1.
-#     freqhz = freq*1e3*1e6
-#     freq *= numerical_fac
-#     #freq_rest = freqhz*(1+redshifts) #FIXME what are these redshifts? same as z?
-#     freq_rest = freqhz*(1 + z)
-
-#     n = len(wavelengths) # number of wavelength bins 
-
-#     snu_unfiltered = np.zeros([n, len(z)])
-#     for i in range(len(list_of_files)): #FIXME: redshift of data does not map to galaxy redshift?
-#         snu_unfiltered[:, i] = np.loadtxt(list_of_files[i])[:, 1]
-#     L_IR15 = L_IR(snu_unfiltered, freq_rest, z) #FIXME: define L_IR
-
-#     for i in range(len(list_of_files)):
-#         snu_unfiltered[:, i] = snu_unfiltered[:, i]*L_sun/L_IR15[i]
-#         #FIXME: define L_sun
-
-#     # Currently unfiltered snus are ordered in increasing wavelengths,
-#     # we re-arrange them in increasing frequencies i.e. invert it
-#     freq = freq[::-1]
-#     snu_unfiltered = snu_unfiltered[::-1]
-#     # snu_unfiltered = snu_eff
-#     # freq = np.array([100., 143., 217., 353., 545., 857., 3000.])
-#     unfiltered_snu = RectBivariateSpline(freq, z, snu_unfiltered)
-
-#     return unfiltered_snu
-
-# #FIXME
-# def Seff_parametric(nu, z, model):
-#     """
-#     Returns the effective IR SED of CIB galaxies.
-    
-#     Args:
-#         nu : frequency
-#         z : redshift
-#         model : 'S12', 'M21' or 'Y23'
-        
-#     Returns:
-#         SED : shape (nu, z), values corresponding to ((1+z)*nu, z)
-#     """
-    
-#     if ((model == 'S12') | (model == 'Y3')):
-#         # SED is proportional but proportionality constant
-#         # absorbed by L0 normalization
-#         SED = theta((1 + z)*nu, z)/(chi**2 * (1+z))
-#     elif model == 'M21':
-#         print("M21")
-#     else:
-#         print("Seff model is not properly specified.")
-    
-#     return SED

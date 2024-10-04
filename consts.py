@@ -4,7 +4,9 @@ Helper function and constants for analysis
 
 from astropy.cosmology import Planck18 as planck
 from astropy import constants as apconst
+from astropy.io import fits 
 from scipy import constants as spconst
+from scipy.interpolate import interp1d
 import numpy as np
 import pandas as pd 
 import pickle
@@ -150,3 +152,18 @@ nu_list = np.array([100, 143, 217, 353, 545, 857]) * 1e9   # convert GHz to Hz
 # nu_prime = (1 + z) * nu
 # broad cast properly to get nu_prime_list of shape (nu, z)
 nu_primes = nu_list[:, np.newaxis] * (1 + redz[np.newaxis, :])
+
+# M23 Seff modeling 
+snuaddr = 'data/filtered_snu_planck.fits'
+hdulist = fits.open(snuaddr)
+redshifts_M23 = hdulist[1].data
+snu_eff_M23 = hdulist[0].data[:-1, :]  # in Jy/Lsun  # -1 because we are
+# not considering the 3000 GHz channel which comes from IRAS
+hdulist.close()
+
+# interpolate over redshift
+snu_eff_interp_func_M23 = interp1d(redshifts_M23, snu_eff_M23,
+                                   kind='linear',
+                                   bounds_error=False, 
+                                   fill_value=0.)
+snu_eff_M23_ELG_z_bins = snu_eff_interp_func_M23(redz)
