@@ -5,6 +5,7 @@ Helper function and constants for analysis
 from astropy.cosmology import Planck18 as planck
 from astropy import constants as apconst
 from astropy.io import fits 
+import astropy.units as u
 from scipy import constants as spconst
 from scipy.interpolate import interp1d
 import numpy as np
@@ -12,11 +13,11 @@ import pandas as pd
 import pickle
 
 # global variables 
-speed_of_light = spconst.c # in SI units
-k_B = spconst.k # Boltzmann constant in SI units
-hp = spconst.h # Planck's constant in SI units
-hp_over_kB = hp/k_B # h/kB for faster calculation of h/k * nu/T
-hp_times_2_over_c2 = 2*hp/speed_of_light**2 # 2h/c^2 for faster calculation
+speed_of_light = spconst.c # in ms^-1
+k_B = spconst.k # Boltzmann constant J K^-1
+hp = spconst.h # Planck's constant J Hz^-1
+hp_over_kB = hp/k_B # h/kB for faster calculation of h/k * nu/T unit: K Hz^-1
+hp_times_2_over_c2 = 2*hp/speed_of_light**2 # 2h/c^2 for faster calculation unit: J m^-2 s^-1
 
 KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * Lsol^-1
 L_sun = 3.828e26 # From Abhishek's code 
@@ -147,11 +148,8 @@ bar_sub = BAR(ms, redz) #shape (ms, Mh, z)
 
 ## pre-calculate S_eff variables (parametrized version)
 # Planck frequencies for CIB are: (100, 143, 217, 353, 545, 857) GHz frequencies
-nu_list = np.array([100, 143, 217, 353, 545, 857]) * 1e9   # convert GHz to Hz 
-
-# nu_prime = (1 + z) * nu
-# broad cast properly to get nu_prime_list of shape (nu, z)
-nu_primes = nu_list[:, np.newaxis] * (1 + redz[np.newaxis, :])
+ghz = 1e9
+nu_list = np.array([100, 143, 217, 353, 545, 857]) * ghz   # convert GHz to Hz 
 
 # M23 Seff modeling 
 snuaddr = 'data/filtered_snu_planck.fits'
@@ -167,3 +165,10 @@ snu_eff_interp_func_M23 = interp1d(redshifts_M23, snu_eff_M23,
                                    bounds_error=False, 
                                    fill_value=0.)
 snu_eff_M23_ELG_z_bins = snu_eff_interp_func_M23(redz)
+
+
+# For parametric model, generate grid: nu_prime = (1 + z) * nu
+# broad cast properly to get nu_prime_list of shape (nu, z)
+nu_grid = np.linspace(1e2,1e3,10000)*ghz # sample 10k points from 100 to 1000 Ghz
+nu_primes = nu_grid[:, np.newaxis] * (1 + redshifts_M23[np.newaxis, :]) # match redshift grid as Planck for convolution
+chi_cib = planck.comoving_distance(redshifts_M23).to(u.m).value # in meter 

@@ -7,6 +7,7 @@ import consts
 
 # integrates using simpson method 
 from scipy.integrate import simpson
+from scipy.interpolate import interp1d
 
 # Lambert W function solver
 from scipy.special import lambertw
@@ -43,165 +44,12 @@ z = dict_gal['z']
 # SED constants
 dgamma = 1.7
 nu_primes = consts.nu_primes
+planck_nu_list = consts.nu_list
+ghz = consts.ghz
+z_cib_planck = consts.redshifts_M23
+chi_cib = consts.chi_cib
 
-###--START OF S_eff MODELING--###
-
-def Tdust(T0, alpha):
-    """
-    Returns dust temp as a function of z.
-    From 1309.0382.
-    
-    Returns:
-        res: of shape (z,)
-    """
-
-    res = T0*(1. + z)**alpha
-    return res
-
-def B_nu(nu, Td):
-    """
-    Returns Planck's blackbody function.
-    
-    Args:
-        nu : frequency array in Hz of shape (nu, z)
-        Td : dust temperature  of shape (z,)
-        
-    Returns:
-        res : of shape (nu, z)
-    """
-    # Pre-factor depending only on nu, shape (nu, z)
-    prefact = hp_times_2_over_c2 * nu**3
-
-    # Ensure Td is broadcast correctly along the redshift dimension
-    Td_re = Td[np.newaxis, :]  # Shape (1, z)
-    
-    # Calculate the exponential term
-    x = hp_over_kB * nu/Td_re # Shape (nu, z)
-
-    # Compute the Planck function
-    res = prefact / (np.exp(x) - 1)  # Shape (nu, z)
-    
-    return res
-
-def nu0_z(beta, Td):
-    """
-    Returns the pivot frequency as a function of redshift.
-    
-    For modified blackboy approximation, 
-    we have dln[v^beta * B_nu(Td)]/dlnnu = -gamma 
-    for nu=nu0 from 2.27 of 2310.10848.
-    
-    In order to find nu0 which is redshift dependent, we need to 
-    use the Lambert W function. of the form x = a + be^(c*x). 
-    Solution is given by: x = a - W(-bce^(ac))/c, check 
-    https://docs.scipy.org/doc/scipy-1.13.0/reference/generated/scipy.special.lambertw.html
-    for reference. 
-    
-    Here, x = nu0, a = K/h_KT, b = -a, c = -h_KT,
-    where K = (gamma + beta + 3) and h_KT = h/(KT)
-    
-    Args:
-        beta: controls "grayness" of blackbody function
-        Td: dust temperature as a function of z
-    Returns:
-        nu0z: pivot frequencies as a function of redshift. Shape (z,)
-    """
-    
-    #FIXME: is this actually smoothly connecting?
-    
-    h_kT = hp_over_kB/Td # shape (z,)
-    K = (dgamma + beta + 3)
-    
-    a = K/h_kT
-    b = -1 * a
-    c = -1 * h_kT
-    
-    x = a - lambertw(-b*c*np.exp(a*c))/c
-    nu0z = np.real(x) # only take the real value
-    
-    return nu0z
-
-def Theta(params):
-    """
-    Returns the modified SED for gray-body function 
-    normalized to 1 at pivot freq.
-    
-    From 2.27 of 2310.10848.
-    
-    theta(nu') = nu'^beta * B_nu' (T) for n < nu0
-               = nu'^(-gamma) for n >= nu0
-    
-    Args:
-        params: (beta, T0, alpha)
-            beta: controls "grayness" of blackbody function
-            T0, alpha: dust parameters
-    Returns:
-        theta_normed : of shape (nu, z)
-    """
-    
-    beta, T0, alpha = params
-    theta = np.zeros_like(nu_primes) # shape (nu, z)
-    Td = Tdust(T0, alpha)
-    nu0z = nu0_z(beta, Td)
-    
-    def prenu0(beta, Td, nu):
-        """
-        Returns the gray-body part of the SED.
-        """
-        
-        res = nu**beta * B_nu(nu, Td)
-        
-        return res 
-        
-    def postnu0(gamma, nu):
-        """
-        Returns the exponential decay part of the SED.
-        """
-        
-        res = nu**(-gamma)
-        
-        return res
-    
-    # calculate SED 
-    flag = nu_primes < nu0z[np.newaxis, :]
-    theta = np.where(flag, 
-                     prenu0(beta, Td, nu_primes), 
-                     postnu0(dgamma, nu_primes))
-
-    # normalize SED such that theta(nu0) = 1
-    theta_normed = np.where(flag, 
-         theta/prenu0(beta, Td, nu0z[np.newaxis, :]),
-         theta/postnu0(dgamma, nu0z[np.newaxis, :]))
-    
-    return theta_normed
-
-def Seff(params, model):
-    """
-    Returns the effective spectral energy distribution (SED) 
-    which is the fraction of IR radiation at the
-    rest-frame frequency (1 + z)nu. 
-    
-    It is defined as the mean flux density per total solar luminosity.
-    
-    Args:
-        params: (beta, T0, alpha)
-            beta: controls "grayness" of blackbody function
-            T0, alpha: dust parameters
-    Returns:
-        seff : of shape (nu, z)
-    """
-    
-    if (model == 'S12') | (model == 'Y23'):
-        seff = Theta(params)
-        
-    elif model == 'M23':
-        seff = consts.snu_eff_M23_ELG_z_bins
-    else:
-        print("Not correct model.")
-        
-    return seff  
-
-###--END OF S_eff MODELING--###
+###--START OF C_ell HELPER FUNCTIONS--###
 
 def window_cib(nu, z):
     """
@@ -327,6 +175,309 @@ def djsub_dlogMh(params_sfr, seff, model):
     
     return jsub
     
+###--END OF C_ell HELPER FUNCTIONS--###
+
+###--START OF S_eff MODELING--###
+
+def Tdust(T0, alpha):
+    """
+    Returns dust temp as a function of z.
+    From 1309.0382.
+    
+    Returns:
+        res: of shape (z,)
+    """
+
+    res = T0*(1. + z_cib_planck)**alpha
+    return res
+
+def B_nu(nu, Td):
+    """
+    Returns Planck's blackbody function.
+    
+    Args:
+        nu : frequency array in Hz of shape (nu, z)
+        Td : dust temperature  of shape (z,)
+        
+    Returns:
+        res : of shape (nu, z)
+    """
+    # Pre-factor depending only on nu, shape (nu, z)
+    prefact = hp_times_2_over_c2 * nu**3
+
+    # Ensure Td is broadcast correctly along the redshift dimension
+    Td_re = Td[np.newaxis, :]  # Shape (1, z)
+    
+    # Calculate the exponential term
+    x = hp_over_kB * nu/Td_re # Shape (nu, z)
+
+    # Compute the Planck function
+    res = prefact / (np.exp(x) - 1)  # Shape (nu, z)
+    
+    return res
+
+def nu0_z(beta, Td):
+    """
+    Returns the pivot frequency as a function of redshift.
+    
+    For modified blackboy approximation, 
+    we have dln[v^beta * B_nu(Td)]/dlnnu = -gamma 
+    for nu=nu0 from 2.27 of 2310.10848.
+    
+    In order to find nu0 which is redshift dependent, we need to 
+    use the Lambert W function. of the form x = a + be^(c*x). 
+    Solution is given by: x = a - W(-bce^(ac))/c, check 
+    https://docs.scipy.org/doc/scipy-1.13.0/reference/generated/scipy.special.lambertw.html
+    for reference. 
+    
+    Here, x = nu0, a = K/h_KT, b = -a, c = -h_KT,
+    where K = (gamma + beta + 3) and h_KT = h/(KT)
+    
+    Args:
+        beta: controls "grayness" of blackbody function
+        Td: dust temperature as a function of z
+    Returns:
+        nu0z: pivot frequencies as a function of redshift. Shape (z,)
+    """
+    
+    #FIXME: is this actually smoothly connecting?
+    
+    h_kT = hp_over_kB/Td # shape (z,)
+    K = (dgamma + beta + 3)
+    
+    a = K/h_kT
+    b = -1 * a
+    c = -1 * h_kT
+    
+    x = a - lambertw(-b*c*np.exp(a*c))/c
+    nu0z = np.real(x) # only take the real value
+    
+    return nu0z
+
+def Theta(params):
+    """
+    Returns the modified SED for gray-body function 
+    normalized to 1 at pivot freq.
+    
+    From 2.27 of 2310.10848.
+    
+    theta(nu') = nu'^beta * B_nu' (T) for n < nu0
+               = nu'^(-gamma) for n >= nu0
+    
+    Args:
+        params: (beta, T0, alpha)
+            beta: controls "grayness" of blackbody function
+            T0, alpha: dust parameters
+    Returns:
+        theta_normed : of shape (nu, z)
+    """
+    
+    beta, T0, alpha = params
+    theta = np.zeros_like(nu_primes) # shape (nu, z)
+    Td = Tdust(T0, alpha)
+    nu0z = nu0_z(beta, Td)
+    
+    def prenu0(beta, Td, nu):
+        """
+        Returns the gray-body part of the SED.
+        """
+        
+        res = nu**beta * B_nu(nu, Td)
+        
+        return res 
+        
+    def postnu0(gamma, nu):
+        """
+        Returns the exponential decay part of the SED.
+        """
+        
+        res = nu**(-gamma)
+        
+        return res
+    
+    # calculate SED 
+    flag = nu_primes < nu0z[np.newaxis, :]
+    theta = np.where(flag, 
+                     prenu0(beta, Td, nu_primes), 
+                     postnu0(dgamma, nu_primes))
+
+    # normalize SED such that theta(nu0) = 1
+    theta_normed = np.where(flag, 
+         theta/prenu0(beta, Td, nu0z[np.newaxis, :]),
+         theta/postnu0(dgamma, nu0z[np.newaxis, :]))
+    
+    return theta_normed
+
+def convolve_with_Planck(seff):
+    """
+    Returns convolved seff with Planck filters.
+    """
+    
+    # load relevant filter arrays
+    #filtarray = {}
+    
+    # store Planck filter convolved SED values per filter and per z
+    seff_convolved = np.empty((len(planck_nu_list), len(z_cib_planck))) 
+    
+    def interp_slice(nu_grid_slice, S_eff_slice, filtfreq):
+        
+        """
+        Returns interpolated values of along Planck filter curves per slice.
+        This function is needed to vectorize the operation across multiple
+        redshifts simultaneously. 
+        
+        Args:
+            nu_grid_slice : Along z direction, nu values
+            S_eff_slice : Along z direction, S_eff values 
+            filtfreq : Planck filter frequency bins
+        Returns:
+            res : interpolated S_eff values for filter # ff_idx
+        """
+        
+        interp_func = interp1d(nu_grid_slice, S_eff_slice,
+                            bounds_error=False,
+                            fill_value=0)
+        
+        res = interp_func(filtfreq)
+        return res
+    
+    slice_interpolator = lambda z_idx, filtfreq: interp_slice(nu_primes[:,z_idx[0]], 
+                                               seff[:, z_idx[0]], filtfreq)
+    
+    planck_nu_names = (planck_nu_list/ghz).astype(int)
+    for i in range(len(planck_nu_names)):
+        
+        # read in filter curves
+        filter_str_name = str(planck_nu_names[i])
+        fname = f'data/filters/HFI__avg_{filter_str_name}_CMB_noise_avg_Apod5_Sfull_v302_HNETnorm.dat'
+        filtarray = np.loadtxt(fname, usecols=(1,2))
+        
+        filter_response = filtarray[:,1] # response curve 
+        filtfreq = filtarray[:,0] * ghz # convert to Hz 
+        area = simpson(y=filter_response, x=filtfreq) # area under filter
+        filter_response = filter_response/area # normalize by area
+        
+        # perform interpolation
+        arr_zidx = np.arange(consts.nu_primes.shape[1]).reshape(-1,1) 
+        seff_interpolated = np.apply_along_axis(slice_interpolator, axis = 1,
+                                                arr = arr_zidx, 
+                                                filtfreq=filtfreq)
+        
+        # weight raw SED by filter response curve
+        tnu_seff = seff_interpolated * filter_response[np.newaxis, :]
+        
+        # integrate total flux along filter curve 
+        seff_convolved[i] = simpson(y = tnu_seff, x = filtfreq, axis = 1)
+    
+    #print(seff_interpolated)
+    
+    return seff_interpolated, seff_convolved
+    
+def Seff(params, model):
+    """
+    Returns the effective spectral energy distribution (SED) 
+    which is the fraction of IR radiation at the
+    rest-frame frequency (1 + z)nu. 
+    
+    It is defined as the mean flux density per total solar luminosity.
+    
+    Args:
+        params: (beta, T0, alpha)
+            beta: controls "grayness" of blackbody function
+            T0, alpha: dust parameters
+    Returns:
+        seff : of shape (nu, z)
+    """
+    
+    if model == 'Y23':
+        
+        seff = Theta(params)
+        #print(seff[0])
+        seff_int, seff = convolve_with_Planck(seff) # model images per Planck filter
+        print(seff_int.max())
+        print(seff.shape)
+        # divide out by distance
+        # Seff = theta/(chi^2 * (1+z))
+        seff = seff/(1 + z_cib_planck[np.newaxis, :])
+        print(seff[0].shape)
+        seff = seff/chi_cib[np.newaxis, :]**2
+        print(chi_cib[0])
+        
+    elif model == 'M23':
+        seff = consts.snu_eff_M23_ELG_z_bins
+    else:
+        print("Not correct model.")
+        
+    return seff_int, seff  
+
+###--END OF S_eff MODELING--###
+
+###--START OF SFR MODELING--###
+def SFR(etamax, mu_peak0, mu_peakp, 
+        sigma_M0, tau, zc, is_sub = False):
+    """
+    Returns star formation rate for models
+    M21 and Y23.
+    
+    Args:
+        is_sub : flag for whether SFR is for subhaloes
+    """
+    
+    eta_val = eta(etamax, mu_peak0, mu_peakp, 
+                  sigma_M0, tau, zc, is_sub = is_sub) 
+    
+    if is_sub:
+        sfr = eta_val * bar_sub 
+    else:
+        sfr = eta_val * bar_c
+
+    return sfr
+
+def SFRc(params, model):
+    """
+    Returns star formation rate of central galaxies as a function of halo parameters and model.
+    
+    Args:
+        params : model parameters
+        Mhc : halo mass of central galaxies
+        model : model name 
+    """
+    
+    if model == 'S12':
+        # SFR_c (Mh, z) propto Sigma_c (M,z) Phi (z) 
+        # from 2.34 of 2310.10848
+        
+        sigma_M0, mu_peak0, mu_peakp, delta = params
+        
+        phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
+        # Reshape phi(z) to broadcast across rows of Sigma
+        phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
+        sigma = Sigma(sigma_M0, mu_peak0, mu_peakp)
+        sfrc =  mean_N_IR_c * sigma * phiCIB 
+    
+    elif model == 'M21':
+        #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)
+        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc = params
+        
+        sfr = SFR(etamax, mu_peak0, mu_peakp, 
+                  sigma_M0, tau, zc)
+        sfrc = sfr * mean_N_IR_c #FIXME: what is this?
+
+    elif model == 'Y23':
+        mu_peak0, mu_peakp, sigma_M0, tau, zc = params
+        
+        # Model cannot constrain etamax so set to 1.
+        # Normalization is absorbed by L0 param in SED.
+        sfr = SFR(etamax = 1, mu_peak0=mu_peak0,
+                  mu_peakp=mu_peak0, sigma_M0=sigma_M0,
+                  tau=tau, zc=zc)
+        sfrc = sfr * mean_N_IR_c #FIXME: what is this?
+        
+    else:
+        print("Not correct model.")
+        
+    return sfrc 
+   
 def SFRsub(params, model):
     """
     Returns SFR of subhalos. 
@@ -380,73 +531,6 @@ def SFRsub(params, model):
         sfrs = np.minimum(option1, option2)
         
         return sfrs
-    
-## star-formation history functions        
-def SFRc(params, model):
-    """
-    Returns star formation rate of central galaxies as a function of halo parameters and model.
-    
-    Args:
-        params : model parameters
-        Mhc : halo mass of central galaxies
-        model : model name 
-    """
-    
-    if model == 'S12':
-        # SFR_c (Mh, z) propto Sigma_c (M,z) Phi (z) 
-        # from 2.34 of 2310.10848
-        
-        sigma_M0, mu_peak0, mu_peakp, delta = params
-        
-        phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
-        # Reshape phi(z) to broadcast across rows of Sigma
-        phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
-        sigma = Sigma(sigma_M0, mu_peak0, mu_peakp)
-        sfrc =  mean_N_IR_c * sigma * phiCIB 
-    
-    elif model == 'M21':
-        #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)
-        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc = params
-        
-        sfr = SFR(etamax, mu_peak0, mu_peakp, 
-                  sigma_M0, tau, zc)
-        sfrc = sfr * mean_N_IR_c #FIXME: what is this?
-
-    elif model == 'Y23':
-        mu_peak0, mu_peakp, sigma_M0, tau, zc = params
-        
-        # Model cannot constrain etamax so set to 1.
-        # Normalization is absorbed by L0 param in SED.
-        sfr = SFR(etamax = 1, mu_peak0=mu_peak0,
-                  mu_peakp=mu_peak0, sigma_M0=sigma_M0,
-                  tau=tau, zc=zc)
-        sfrc = sfr * mean_N_IR_c #FIXME: what is this?
-        
-    else:
-        print("Not correct model.")
-        
-    return sfrc 
-
-# DONE
-def SFR(etamax, mu_peak0, mu_peakp, 
-        sigma_M0, tau, zc, is_sub = False):
-    """
-    Returns star formation rate for models
-    M21 and Y23.
-    
-    Args:
-        is_sub : flag for whether SFR is for subhaloes
-    """
-    
-    eta_val = eta(etamax, mu_peak0, mu_peakp, 
-                  sigma_M0, tau, zc, is_sub = is_sub) 
-    
-    if is_sub:
-        sfr = eta_val * bar_sub 
-    else:
-        sfr = eta_val * bar_c
-
-    return sfr
 
 # DONE
 def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
@@ -489,77 +573,79 @@ def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
     eta_val = etamax * np.exp(-0.5 * ((np.log(M_re) - np.log(Mpeak))/sigmaM)**2)
     
     return eta_val
-         
-# DONE
-def phi_CIB(delta):
-    """
-    Returns redshift kernel of CIB contribution. 
-    
-    from 2.26 of 2310.10848 (originally 22 of 1109.1522).
-    
-    Phi(z) = (1 + z)^delta
-    
-    Args:
-        delta : power index defining redshift evolution contribution.
-    """
-    
-    phi = (1 + z)**delta
-    
-    return phi
 
-def Sigmasub(sigma_M0, mu_peak0, mu_peakp):
+###--END OF SFR MODELING--###
+
+# # Deprecated, useful for the S12 model
+# def phi_CIB(delta):
+#     """
+#     Returns redshift kernel of CIB contribution. 
     
-    """
-    Returns Luminosity-Mass relationship of satellite galaxies. 
-    From 2.33 of 2310.10848.
+#     from 2.26 of 2310.10848 (originally 22 of 1109.1522).
     
-    Sigma_s(M) = integrate from M_min to M 
-    integrand = d ln m dN_sub/dln m (m | M) Sigma(M)
+#     Phi(z) = (1 + z)^delta
     
-    Args:
-        sigma_M0 : halo mass range contributing to IR emissivity 
-        mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
-        mu_peakp : rate of change of halo mass contributing to IR emissity at higher z  
+#     Args:
+#         delta : power index defining redshift evolution contribution.
+#     """
     
-    Returns : 
-        res : of shape (Mh, z)
-    """
+#     phi = (1 + z)**delta
     
-    # Represents minimum halo mass that can host subhalos
-    Mmin = 1e6 #Msun according to pg 11 of 2310.10848. 
+#     return phi
+
+# def Sigmasub(sigma_M0, mu_peak0, mu_peakp):
     
-    # Discretize the log-space between Mmin and Mmax for all Mh values
-    def log_m_range_vectorized(M, num_points=100):
-        """Create a 2D log-spaced array of m values for each M."""
+#     """
+#     Returns Luminosity-Mass relationship of satellite galaxies. 
+#     From 2.33 of 2310.10848.
+    
+#     Sigma_s(M) = integrate from M_min to M 
+#     integrand = d ln m dN_sub/dln m (m | M) Sigma(M)
+    
+#     Args:
+#         sigma_M0 : halo mass range contributing to IR emissivity 
+#         mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
+#         mu_peakp : rate of change of halo mass contributing to IR emissity at higher z  
+    
+#     Returns : 
+#         res : of shape (Mh, z)
+#     """
+    
+#     # Represents minimum halo mass that can host subhalos
+#     Mmin = 1e6 #Msun according to pg 11 of 2310.10848. 
+    
+#     # Discretize the log-space between Mmin and Mmax for all Mh values
+#     def log_m_range_vectorized(M, num_points=100):
+#         """Create a 2D log-spaced array of m values for each M."""
         
-        M_log_min = np.log(Mmin) 
-        M_log_vals = np.log(M)
-        log_m_vals = M_log_min + (np.linspace(0, 1, num_points) * (M_log_vals[:, np.newaxis] - M_log_min))  # Shape (len(M), num_points)
-        m_vals = np.exp(log_m_vals)  # Convert back to m values
-        return m_vals  # Shape (len(M), num_points)
+#         M_log_min = np.log(Mmin) 
+#         M_log_vals = np.log(M)
+#         log_m_vals = M_log_min + (np.linspace(0, 1, num_points) * (M_log_vals[:, np.newaxis] - M_log_min))  # Shape (len(M), num_points)
+#         m_vals = np.exp(log_m_vals)  # Convert back to m values
+#         return m_vals  # Shape (len(M), num_points)
 
-    # Generate the 2D m grid for each Mh
-    m_vals = log_m_range_vectorized(Mh)  # Shape (Mh, m) here m is of length num_points
+#     # Generate the 2D m grid for each Mh
+#     m_vals = log_m_range_vectorized(Mh)  # Shape (Mh, m) here m is of length num_points
 
-    # Compute subhalo function (m, M)
-    subhalo_func = subhmf(m_vals, Mh)  # Shape (Mh, m)
+#     # Compute subhalo function (m, M)
+#     subhalo_func = subhmf(m_vals, Mh)  # Shape (Mh, m)
     
-    # Compute Sigma(m, z) for all m and z
-    Sigma_vals =  Sigma(sigma_M0, mu_peak0, mu_peakp)
+#     # Compute Sigma(m, z) for all m and z
+#     Sigma_vals =  Sigma(sigma_M0, mu_peak0, mu_peakp)
     
-    # Integrate over ln m
-    ln_m_vals = np.log(m_vals)
+#     # Integrate over ln m
+#     ln_m_vals = np.log(m_vals)
     
-    #FIXME: can take out Sigma since it does not depend on m? 
-    integral = simpson(subhalo_func, x=ln_m_vals, axis=1)  # Shape (Mh,)
+#     #FIXME: can take out Sigma since it does not depend on m? 
+#     integral = simpson(subhalo_func, x=ln_m_vals, axis=1)  # Shape (Mh,)
     
-    # Combine results: Sigmas(M, z) = Sigma(M, z) * integral
-    res = Sigma_vals * integral[:, np.newaxis]  # Shape (Mh, z)
+#     # Combine results: Sigmas(M, z) = Sigma(M, z) * integral
+#     res = Sigma_vals * integral[:, np.newaxis]  # Shape (Mh, z)
     
-    return res
+#     return res
 
-# DONE 
-def Sigma(sigma_M0, mu_peak0, mu_peakp):
+# # DONE 
+# def Sigma(sigma_M0, mu_peak0, mu_peakp):
     """
     Returns the Luminosity-Mass relation.
     From 2.30 of 2310.10848 (originally 23 of 1109.1522)
