@@ -45,6 +45,7 @@ with open('data/plin_unit_h.p', 'rb') as handle:
 with open('data/hmfz.p', 'rb') as handle:
     hmfz_dict = pickle.load(handle)
 Mh = hmfz_dict['Mh']
+log10Mh = np.log10(Mh)
 hmfz = hmfz_dict['hmfz']
 
 # pre-calculate central halo mass Mhc = Mh * (1 - fsub)
@@ -110,6 +111,11 @@ dict_gal['ELG']['HOD']['M1'] = 10**13.84 * dict_gal['ELG']['HOD']['As']**(1/dict
 Omegab_to_OmegaM_over_z = planck.Ob(dict_gal['ELG']['z'])/planck.Om(dict_gal['ELG']['z'])
 dict_gal['ELG']['Omegab_to_OmegaM_over_z'] = Omegab_to_OmegaM_over_z
 
+# dict with IR HOD properties based on pg.6 of 2310.10848
+dict_gal['IR'] = {}
+dict_gal['IR']['HOD'] = {}
+dict_gal['IR']['HOD']['sigma_lnM'] = 0.4 #transition smoothing scale #FIXME: fixing this feels ad hoc?
+
 # star formation constants
 def BAR(M, z):
     """
@@ -172,3 +178,28 @@ snu_eff_M23_ELG_z_bins = snu_eff_interp_func_M23(redz)
 nu_grid = np.linspace(1e2,1e3,10000)*ghz # sample 10k points from 100 to 1000 Ghz
 nu_primes = nu_grid[:, np.newaxis] * (1 + redshifts_M23[np.newaxis, :]) # match redshift grid as Planck for convolution
 chi_cib = planck.comoving_distance(redshifts_M23).to(u.m).value # in meter 
+
+##--halo.py--##
+rho_crit_ELG = (planck.critical_density(dict_gal['ELG']['z'])).to(u.Msun/u.Mpc**3).value # units of Msol/Mpc^3
+mean_density0 = (OmegaM0*planck.critical_density0).to(u.Msun/u.Mpc**3).value # Returns mean density at z = 0, units of Msol/Mpc^3
+
+# Lagrangian radius of a dark matter halo
+mass_to_radius = (3*Mh/(4*np.pi*mean_density0))**(1/3) # units of Mpc^3 shape (Mh,)
+
+def get_k_R():
+    """
+    we need a c-M relation to calculate the fourier transform of the NFW
+    profile. We use the relation from https://arxiv.org/pdf/1407.4730.pdf
+    where they use the slope of the power spectrum with respect to the
+    wavenumber in their formalism. This power spectrum slope has to be
+    evaluated at a certain value of k such that k = kappa*2*pi/rad
+    This kappa value comes out to be 0.69 according to their calculations.
+    """
+    rad = mass_to_radius
+    kappa = 0.69
+    
+    res = kappa * 2 * np.pi / rad
+    
+    return res
+
+k_R = get_k_R() # shape (Mh,)
