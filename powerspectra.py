@@ -2,19 +2,48 @@
 Script repurposed from Abhishek Maniyar's DopplerCIB github. 
 
 Author: Tanveer Karim
-Last Updated: 27 September 2024
+Last Updated: 12 Oct 2024
 """
+
+import numpy as np
 
 # integrates using simpson method 
 from scipy.integrate import simpson
 
 # import local modules
 import consts
-import precalculation as pc
+import precalc as pc
+import gal
+
+# halo constants 
+Mh = consts.Mh
+hmfz = consts.hmfz
+biasmz = pc.halo_biases
 
 dict_gal = consts.dict_gal['ELG']
 chi = dict_gal['chi']
 dchi_dz = dict_gal['dchi_dz']
+
+def pseudo_Cell(theta, M, B):
+    """
+    Returns pseudo-C_ell.
+    
+    Args:
+        theta : model parameters 
+        M : coupling matrix (obtained from Skylens)
+        B : binning operator (obtained from Skylens)
+    Returns:
+        pcl_combined : single vector [gg, gcib_357, gcib_545, gcib_857]
+    """
+    
+    # calculate unbinned pcl
+    pcl_gcib = cibgalcross_cell_tot(theta) @ M
+    pcl_gg = "ok" #FIXME 
+    
+    # bin pcl
+    
+    pcl_combined = np.concatenate(pcl_gg_binned, pcl_gcib_binned) #FIXME: make sure gcib order is correct
+    return pcl_combined
 
 def cibgalcross_cell_tot(theta): 
     """
@@ -58,10 +87,10 @@ def cibgalcross_cell_2h(theta):
     """  
 
     # prefact = 1/chi^2 * dchi/dz
-    prefact = 1/chi**2 * dchi_dz
+    prefact = 1/chi**2 * dchi_dz # (z,)
     
     # w1w2 = W_CIB * W_gal
-    w1w2 = window_cibxgal() #FIXME
+    w1w2 = window_cibxgal(b_gal) # (z,)
 
     # P^{g,CIB}_2h
     ucen = self.unfw #FIXME: need this from Rocher
@@ -76,20 +105,33 @@ def cibgalcross_cell_2h(theta):
     res = simpson(res, x=self.z, axis=2)
     return res
 
-def window_cibxgal():
+def get_W_gal(b_gal):
+    """
+    Returns galaxy radial kernel accounting
+    for bias, dndz and magnification bias. 
+    """
+    
+    pz = dict_gal['pz']
+    
+    gal_bias_term = b_gal * pz
+    mag_bias_term = pc.mag_bias_gal
+    
+    w_gal = gal_bias_term + mag_bias_term
+    
+    return w_gal # (z,)
+    
+def window_cibxgal(b_gal):
     """
     Returns the multiplication of the radial window functions.
     """
     
     # W_gal = dz/dchi * pz
-    w_gal = pc.radial_window_gal/dchi_dz
+    w_gal = get_W_gal(b_gal)/dchi_dz #FIXME: dchi_dz should be IR galaxies 
 
-    w_cib = pc.radial_window_cib
+    w_cib = pc.W_cib
 
-    return w_gal * w_cib #shape (nu,z)
+    return w_gal * w_cib #shape (z,) #FIXME: match size through interpolation?
     
-
-
 def cibgalcross_cell_shot(theta):
     #FIXME: need nu0, ell, 
     
@@ -121,46 +163,6 @@ def cibgalcross_cell_shot(theta):
     shotgal = np.repeat(self.clshot_gal(), len(self.ell))
     crossshot = r_l*np.sqrt(shotcib*shotgal)
     return crossshot
-
-
-def W_cib(): #FIXME
-    """
-    Returns redshift kernel of CIB field
-    """
-    outp = 1/(1 + z)
-    return j_nuprime_z(nu, z, dM) * outp
-
-def W_gal(b_gal, dict_gal = dict_ELG): #DONE
-    """
-    Returns redshift kernel of galaxy field
-    """
-    
-    z = dict_gal['z']
-    pz = dict_gal['pz']
-    chi = dict_gal['chi']
-    Hz = dict_gal['Hz']
-    mag_bias_alpha = dict_gal['mag_bias_alpha']
-    
-    gal_bias_term = b_gal * pz
-    
-    mag_bias_prefact = 3 * OmegaM/(2 * c)
-    mag_bias_prefact = (mag_bias_prefact * H0**2/Hz * (1 +z) * chi).decompose() # to reduce to the same unit
-    
-    integrated_values = np.zeros_like(z)
-    for i in range(len(z)): # loop over to get integrand values 
-      zspecific_indx = i
-      
-      # only consider bins above the specific index 
-      flag = (z >= z[zspecific_indx])
-      ratio = chi[zspecific_indx]/chi[flag]
-      
-      # assuming constant alpha over z 
-      integrand_term = (1 - ratio) * (mag_bias_alpha - 1) * pz[flag]
-      integrated_values[i] = simpson(y = integrand_term, x = z[flag])
-  
-    mag_bias_term = mag_bias_prefact * integrated_values
-    return gal_bias_term + mag_bias_term
-    
     
 def cibterm(djc_dlogMh, djs_dlogMh, unfw): #FIXME: needs testing
     """
@@ -168,23 +170,56 @@ def cibterm(djc_dlogMh, djs_dlogMh, unfw): #FIXME: needs testing
     This corresponds to the CIB term in calculating Pk. 
     
     Args:
-        djc_dlogMh : Specific emissivity of central galaxies (Mh, z)
-        djs_dlogMh : Specific emissivity of sat galaxies (Mh, z)
-        unfw : Fourier transform the NFW profile inside the halo. 
-               Shape is num of modes X num of Halo mass func bins X num of redshifts
+        djc_dlogMh : Specific emissivity of central galaxies (nu, Mh, z)
+        djs_dlogMh : Specific emissivity of sat galaxies (nu, Mh, z)
+        unfw : Fourier transform the NFW profile inside the halo. (k, Mh, z)
 
     Returns:
-        res : shape (k, Mh, z)
+        res : shape (k, nu, Mh, z)
     """
     
     #reshape to include k dimension to multiply with unfw
-    djs_dlogMh = djs_dlogMh[np.newaxis, :, :]
-    djc_dlogMh = djc_dlogMh[np.newaxis, :, :]
+    djc_dlogMh = np.expand_dims(djc_dlogMh, axis = 0)
+    djs_dlogMh = np.expand_dims(djs_dlogMh, axis = 0)
     
-    res = djs_dlogMh * unfw
+    # reshape to include nu dimension in unfw
+    res = djs_dlogMh * np.expand_dims(unfw, axis = 1)
     res = res + djc_dlogMh
     
     return res
+
+
+def cibgalcross_pk_2h(ucen, unfw, pk):
+        """
+        Check the calculation first using two different integrals for both CIB
+        and galaxies, then check with a single integral for both after
+        multiplying. If both are same, then we can save one integral.
+        
+        Pk_2h (nu, k, z) = b_g * b_CIB * P_lin/(nbar * jbar)
+        
+        b_g = int HMF(Mh, z) * b(Mh, z) * gal_term (k, Mh, z) dlogMh
+        b_CIB = int HMF(Mh, z) * b(Mh, z) * cib_term (nu, k, Mh, z) dlogMh
+        """
+        # pk = self.uni.Pk_array(self.ell, self.z)
+        # print (self.hmfmz.shape, self.biasmz.shape)
+        
+        # galaxy bias term: int HMF(Mh, z) * b(Mh, z) * gal_term (k, Mh, z) dlogMh
+        galterm = gal.galterm_Pk(params, rho_crit, rad, dlnpk_dlnk, gal_type = 'ELG')
+        integrand = hmfz * biasmz * galterm # FIXME: pass galterm properly
+        integral_g = simpson(y=integrand, x=Mh) #FIXME: define axis properly 
+        
+        # CIB bias term: int HMF(Mh, z) * b(Mh, z) * cib_term (nu, k, Mh, z) dlogMh
+        integrand = hmfz * biasmz * cibterm #FIXME: pass cibterm properly
+        integral_cib = simpson(y=integrand, x=Mh)
+        
+        res1 = hmfz*self.biasmz*self.cibterm(unfw)  # snu_eff, unfw)
+        dm = np.log10(self.mh[1] / self.mh[0])
+        intg_mh1 = intg.simps(res1, dx=dm, axis=2, even='avg')
+        
+        res2 = self.hmfmz*self.biasmz*self.galterm(ucen, unfw)  # ucen, unfw)
+        intg_mh2 = intg.simps(res2, dx=dm, axis=1, even='avg')
+        res3 = intg_mh1*intg_mh2*pk
+        return res3/self.nbargal()/self.jbar()[:, None, :]
      
 
     
