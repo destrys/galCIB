@@ -1,6 +1,6 @@
 """
 This module defines the fixed cosmology used in the analysis.
-This is helpful to pass consistent values to CAMB and colossus.
+This is helpful to pass consistent values from and to CAMB and colossus.
 """
 
 import pickle 
