@@ -15,7 +15,7 @@ from colossus.cosmology import cosmology as cc
 from colossus.lss import mass_function
 
 # Redshift range covering both ELG and CIB in bins of ELG
-z_all = np.arange(0, 10.22, 0.05)
+z_all = np.insert(np.arange(0.05, 2.95, 0.1), 0, 0.0)
 
 # k range covering up to k_max = 10
 k_all = np.logspace(0.0001, 10.0, 500)
@@ -84,7 +84,7 @@ if SAVE:
     hmfz_dict = {}
     hmfz_dict['z'] = z_all
     hmfz_dict['M_Msol_h'] = Mh_Msol_h
-    hmfz_dict['hmfz_log10'] = hmfz
+    hmfz_dict['hmfz_log10M'] = hmfz
     
     with open('data/hmfz_h.p', 'wb') as handle:
         pickle.dump(hmfz_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
