@@ -15,7 +15,7 @@ from colossus.cosmology import cosmology as cc
 from colossus.lss import mass_function
 
 # Redshift range covering both ELG and CIB in bins of ELG
-z_all = np.insert(np.arange(0, 10.22, 0.05), 0, 0.)
+z_all = np.insert(np.arange(0.05, 10.22, 0.1), 0, 0.)
 
 # k range covering up to k_max = 10
 k_all = np.logspace(0.0001, 10.0, 500)
