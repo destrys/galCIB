@@ -5,15 +5,20 @@ This module contains functions important for halo model calculations.
 import numpy as np 
 import scipy.special as ss
 from scipy.integrate import simpson
+
+from colossus.cosmology import cosmology as cc
+from colossus.lss import bias as clss_bias
+
+# import local modules
 import consts
+import cosmology
 
 # import halo consts
 Mh = consts.Mh
 kk = consts.Plin['kh'] #FIXME: make sure what the unit of k is, if k/h or k
 power = consts.Plin['pk'] #FIXME: make sure what the unit of Pk is
 
-# DONE
-def uprof_mixed(prof_params, rho_crit, rad, dlnpk_dlnk):
+def uprof_mixed(prof_params, rad, dlnpk_dlnk):
     """
     Returns Fourier Transform of halo profile mimicing DESI ELGs. 
     
@@ -25,12 +30,13 @@ def uprof_mixed(prof_params, rho_crit, rad, dlnpk_dlnk):
             fexp : frac. of ELG satellites following exp. profile
             rs : 
             tau : exponential index
+    Returns:
+        res : (k, Mh, z)
     """
     
     fexp, tau, lambda_NFW = prof_params
     
-    nfw_term, rs_original = nfwfourier_u(lambda_NFW, rho_crit, 
-                                         rad, dlnpk_dlnk)
+    nfw_term, rs_original = nfwfourier_u(lambda_NFW, rad, dlnpk_dlnk)
     exp_term = expfourier_u(tau=tau, rs = rs_original)
     
     res = fexp * exp_term + (1-fexp) * nfw_term
@@ -56,7 +62,7 @@ def expfourier_u(tau, rs):
     
     return res
     
-def nfwfourier_u(lambda_NFW, rho_crit, rad, dlnpk_dlnk):
+def nfwfourier_u(lambda_NFW, rad, dlnpk_dlnk):
     """
     Returns Fourier Transform of the NFW profile.
     
@@ -70,7 +76,7 @@ def nfwfourier_u(lambda_NFW, rho_crit, rad, dlnpk_dlnk):
         lambda_NFW : rescaling factor of rs
     """
     
-    rs_original = r_star(rho_crit, rad, dlnpk_dlnk) # (Mh, z)
+    rs_original = r_star(rad, dlnpk_dlnk) # (Mh, z)
     rs_rescaled = rs_original/lambda_NFW
     c = nu_to_c200c(rad, dlnpk_dlnk) # (Mh, z)
     c_term = ampl_nfw(c) # (Mh, z)
@@ -110,7 +116,7 @@ def sine_cosine_int(x):
     si, ci = ss.sici(x)
     return si, ci
 
-def r_star(rho_crit, rad, dlnpk_dlnk):
+def r_star(rad, dlnpk_dlnk):
     """
     Characteristic radius also called r_s in other literature.
     Physically refers to the transition point where the halo
@@ -124,7 +130,7 @@ def r_star(rho_crit, rad, dlnpk_dlnk):
     """
     
     c_200c = nu_to_c200c(rad, dlnpk_dlnk) # (Mh, z)
-    r200 = r_delta(delta_h=200, rho_crit=rho_crit) # (Mh, z)
+    r200 = r_delta(delta_h=200) # (Mh, z)
     res = r200/c_200c  
     
     return res
@@ -221,7 +227,7 @@ def W(rk):
     return res
 
 #DONE
-def r_delta(delta_h = 200, rho_crit = consts.rho_crit_ELG): #FIXME: how many z bins are we calculating rho_crit in
+def r_delta(delta_h = 200): #FIXME: how many z bins are we calculating rho_crit in
     """
     Returns radius of the halo containing amount of matter
     corresponding to delta times the critical density of 
@@ -234,7 +240,7 @@ def r_delta(delta_h = 200, rho_crit = consts.rho_crit_ELG): #FIXME: how many z b
         res : shape (Mh, z) in units of Mpc^3
     """
 
-    r3 = 3*consts.Mh[:,np.newaxis]/(4*np.pi*delta_h*rho_crit[np.newaxis,:]) ##FIXME: define delta_h
+    r3 = 3*consts.Mhc_Msol[:,np.newaxis]/(4*np.pi*delta_h*consts.rho_crit[np.newaxis,:]) # units of Mpc^3
     
     res = r3**(1./3.)
     return res
@@ -284,3 +290,16 @@ def get_dlnpk_dlnk():
         res[:,i] = np.interp(kr, kk, grad[i]) # loop over per redshift
     
     return res
+
+##--BIAS MODEL--##
+def b_nu(nu, z):
+    """
+    Returns halo bias at a given peak height nu. 
+    """
+    
+    # set cosmology for colossus
+    cc.setCurrent(cosmology.colossus_planck_cosmo)
+    
+    b = clss_bias.haloBiasFromNu(nu, z, mdef = '200m') # calculate bias for both ELG and CIB
+    
+    return b

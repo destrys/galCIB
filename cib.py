@@ -49,20 +49,76 @@ ghz = consts.ghz
 z_cib_planck = consts.redshifts_M23
 chi_cib = consts.chi_cib
 
-###--START OF C_ell HELPER FUNCTIONS--###
+###--RADIAL KERNEL---###
 
-def window_cib(nu, z):
+def get_W_cib(z_cib): #FIXME
     """
-    Returns CIB radial kernel.
+    Returns redshift kernel of CIB field.
+    """
+    a = 1/(1 + z_cib)
     
+    return a
+
+###--END OF RADIAL KERNEL--###
+
+# def cibterm(djc_dlogMh, djs_dlogMh, unfw): #FIXME: needs testing
+#     """
+#     Returns the first bracket in A13 of 2204.05299.
+#     This corresponds to the CIB term in calculating Pk. 
+    
+#     Args:
+#         djc_dlogMh : Specific emissivity of central galaxies (nu, Mh, z)
+#         djs_dlogMh : Specific emissivity of sat galaxies (nu, Mh, z)
+#         unfw : Fourier transform the NFW profile inside the halo. (k, Mh, z)
+
+#     Returns:
+#         res : shape (k, nu, Mh, z)
+#     """
+    
+#     #reshape to include k dimension to multiply with unfw
+#     djc_dlogMh = np.expand_dims(djc_dlogMh, axis = 0)
+#     djs_dlogMh = np.expand_dims(djs_dlogMh, axis = 0)
+    
+#     # reshape to include nu dimension in unfw
+#     res = djs_dlogMh * np.expand_dims(unfw, axis = 1)
+#     res = res + djc_dlogMh
+    
+#     return res
+
+def cibterm(params, u, cib_model):
+    """
+    Returns the first bracket in A13 of 2204.05299.
+    This corresponds to the CIB term in calculating Pk. 
+    
+    Args:
+        params : SFR and SED parameters 
+        unfw : Fourier transform the NFW profile inside the halo. (k, Mh, z)
+        cib_model : Name of the CIB model to be tested
+
     Returns:
-        w_cib : of shape (nu, z)
+        res : shape (k, nu, Mh, z)
     """
     
-    a = 1/(1+z)
-    w_cib = a * jbar(nu) #FIXME
+    if (cib_model == 'S21') | (cib_model == 'Y23'):
+        L0 = params[0] # overall normalization parameter of the SED
+        params_sfr = params[1:-3] 
+        params_seff = params[-3:] # last three params
+        seff = L0 * Seff(params_seff, model = cib_model) # shape (nu, z)
+    elif cib_model == 'M23':
+        params_sfr = params
+        seff = Seff(params=None, model = cib_model) # Non-parametric model
+    else:
+        print("Did not input correct model.")
+        
+    djc = djc_dlogMh(params_sfr, seff, cib_model)
+    djsub = djsub_dlogMh(params_sfr, seff, cib_model)
     
-    return w_cib
+    final_term = np.expand_dims(djc, axis=0) + np.expand_dims(djsub, axis=0) * u
+    
+    return final_term
+    
+
+###--START OF C_ell HELPER FUNCTIONS--###
 
 def jbar(params, model):
     """

@@ -6,11 +6,23 @@ DESI Legacy Imaging Surveys galaxies.
 import numpy as np
 import scipy.special as ss
 from scipy.integrate import simpson
-import consts
 
+# import local modules
+import consts
+import halo 
+
+# read in cosmological constants
+OmegaM0 = consts.OmegaM0
+
+# read in halo constants
+Mh = consts.Mh
+log10Mh = consts.log10Mh
+
+# read in ELG constants
 gal_type = 'ELG'
 dict_gal = consts.dict_gal[gal_type]
 pz = dict_gal['pz']
+z = dict_gal['z']
 
 Ac = dict_gal['HOD']['Ac']
 log10Mc = dict_gal['HOD']['log10Mc']
@@ -21,99 +33,172 @@ M0 = dict_gal['HOD']['M0']
 M1 = dict_gal['HOD']['M1']
 alpha = dict_gal['HOD']['alpha']
 
-def Ncen_GHOD(Mh, Ac = Ac, sigmaM = sigmaM, log10Mc = log10Mc):
+# read in CIB galaxy constants
+IR_sigma_lnM = consts.dict_gal['IR']['HOD']['sigma_lnM']
+
+def Ncen_GHOD(log10Mc, sigmaM, Ac):
     """
     Returns num. of central galaxies per halo, as a function
     of halo mass. 
     Based on Gaussian HOD Model (GHOD) Eq. 3.1 of 2306.06319
     
     Args:
-        Mh : halo mass 
-        Ac : size of the central galaxy sample
-        log10Mc : characteristic halo mass that hosts a central gal.
-        sigmaM : width of distribution
+        log10Mc : characteristic mass for a halo to host a central galaxy
+        sigmaM : width of the distribution
+        Ac : sets the size of the central galaxy sample
+    Returns:
+        res : A single number #FIXME: do we make log10Mc and sigmaM z dependent?
     """
     
     prefact = Ac/(np.sqrt(2 * np.pi) * sigmaM)
-    exp_term = -0.5/(sigmaM**2) * (np.log10(Mh) - log10Mc)**2
-    exp_term = np.exp(exp_term)
+    exp_term = -0.5/(sigmaM**2) * (log10Mh - log10Mc)**2
+    res = prefact * np.exp(exp_term)
     
-    return prefact * exp_term
+    return res
 
-def Ncen(Mh, Ac = Ac, sigmaM = sigmaM, 
-         log10Mc = log10Mc, 
-         gamma = gamma, gal_type = 'ELG'):
-    """Returns num. of central galaxies per halo, between 0 and 1
+def z_evolution_model(params):
+    """
+    Returns redshift evolution model of HOD mass params.
+    """
+    
+    mu_0, mu_p = params
+    mu_X = mu_0 + mu_p * z/(1+z)
+    
+    return mu_X
+    
+def Ncen(hod_params, gal_type):
+    """
+    Returns num. of central galaxies per halo, between 0 and 1
     as a function of halo mass. 
-    Based on High Mass Quenched Model (mHMQ) Eq. 3.4 of 2306.06319
+    
+    IR is based on 2.11 of 2310.10848.
+    ELG is based on High Mass Quenched Model (mHMQ) Eq. 3.4 of 2306.06319
     
     Args:
-        Mh : halo mass
-        Ac : size of the central galaxy sample
-        Mc : characteristic halo mass that hosts a central gal.
-        sigmaM : width of distribution
-        gamma : asymmetry of distribution 
-        gal_type : galaxy type 
+        hod_params : HOD parameters to be constrained
+            ELG hod_params: (gamma, log10Mc, sigmaM)
+        gal_type : whether galaxy is ELG or IR
+    Returns:
+        res : vector of size (Mh,)
     """
-    # m = self.mh
+    
     if gal_type == 'ELG':
+        # Functional form is:
+        # <N_c(M)> = <N_c^(GHOD)(M)>[1+erf(gamma*(log10(Mh/Mc))/(sqrt(2)*sigmaM))]
+        # From 3.4 of 2306.06319.
         
-        erf_term = np.log10(Mh) - log10Mc
-        erf_term *= gamma/(np.sqrt(2) * sigmaM)
-        erf_term = ss.erf(erf_term)
-        second_term = 1 + erf_term 
-        first_term = Ncen_GHOD(Mh, Ac, sigmaM, log10Mc)
+        gamma, log10Mc, sigmaM, Ac = hod_params
+        erf_term = gamma * (log10Mh - log10Mc)/(np.sqrt(2) * sigmaM)
+        second_term = (1 + ss.erf(erf_term))
+        first_term = Ncen_GHOD(log10Mc, sigmaM, Ac)
+        res = first_term * second_term
+    
+    elif gal_type == 'IR':
+        Mmin = z_evolution_model(hod_params) #FIXME: figure out if z evolving or not
+        erf_term = np.log(Mh/Mmin)/IR_sigma_lnM #FIXME
+        res = 0.5 * (1 + ss.erf(erf_term)) 
         
-        return first_term * second_term
     else:
-        print("not ELG")
+        print("not ELG or IR galaxies.")
+
+    return res
         
-def Nsat(Mh, As = As, M0 = M0,
-         M1 = M1, alpha = alpha):
+def Nsat(hod_params):
     """
     Returns num. of sat. gal. per halo
     
     Args:
-        Mh : halo mass
-        As : size of sat. gal. sample
-        M0 : cut-off halo mass at which sat. gal. can be produced
-        M1 : normalization constant 
-        alpha : richness parameter
+        hod_params : HOD parameters satellite galaxies
+            ELG:
+                As : sets the size of the satellite galaxy sample
+                M0 : cut-off halo mass from which satellites can be present
+                M1 : Normalization factor
+                alpha : controls the increase in satellite richness 
+                        with increasing halo mass
+    Returns:
+        res : vector of size (Mh,)
     """
     
-    power_term = (Mh - M0)/M1
-    return As * power_term**alpha
+    As, M0, M1, alpha = hod_params
+    
+    # flag for halo masses for which Mh - M0 > 0;
+    # if Mh - M0 <= 0, then Nsat = 0. #FIXME: logic?
+    flag = (Mh - M0) > 0
+    res = np.zeros_like(Mh)
+    res[flag] = As * ((Mh[flag] - M0)/M1)**alpha
+    
+    return res
 
-def window_gal():
+def get_Wmu(dict_gal = dict_gal):
     """
-    Return radial kernel of galaxy sample.
+    Returns magnification bias kernel as a func. 
+    of redshift of the galaxies.
     """
+    
+    z = dict_gal['z']
+    pz = dict_gal['pz']
+    chi = dict_gal['chi']
+    Hz = dict_gal['Hz']
+    mag_bias_alpha = dict_gal['mag_bias_alpha']
+    
+    
+    mag_bias_prefact = 3 * OmegaM0/(2 * consts.speed_of_light)
+    mag_bias_prefact = (mag_bias_prefact * consts.H0**2/Hz * (1 + z) * chi).decompose() # to reduce to the same unit
+    
+    integrated_values = np.zeros_like(z)
+    for i in range(len(z)): # loop over to get integrand values 
+      zspecific_indx = i
+      
+      # only consider bins above the specific index 
+      flag = (z >= z[zspecific_indx])
+      ratio = chi[zspecific_indx]/chi[flag]
+      
+      # assuming constant alpha over z 
+      integrand_term = (1 - ratio) * (mag_bias_alpha - 1) * pz[flag]
+      integrated_values[i] = simpson(y = integrand_term, x = z[flag])
+  
+    mag_bias_term = mag_bias_prefact * integrated_values
+
+    return mag_bias_term.value # shape (z,)
+
+def get_Wgal(dict_gal = dict_gal):
+    """
+    Returns galaxy radial kernel as a func
+    of redshift.
+    """
+    
+    pz = dict_gal['pz']
     
     return pz
+    
 
-def galterm_Pk(Ncen, Nsat, unfw): #FIXME: needs testing
+def galterm(params, u, gal_type = 'ELG'): #FIXME: needs testing
     """
     Returns the second bracket in A13 of 2204.05299.
+    Form is (Nc + Ns * u(k, Mh, z)).
     This corresponds to the galaxy term in calculating Pk.
     
-    Args:
-        Ncen : num. of central galaxies inside a given halo (Mh X z)
-        Nsat : num. of sat. galaxies inside a given halo (Mh X z)
-        unfw : Fourier transform the NFW profile inside the halo. 
-               Shape is num of modes X num of Halo mass func bins X num of redshifts
+    Note: For ELG we are only picking one effective redshift, hence
+    no evolution of Ncen or Nsat. 
     
+    Args:
+        params: MCMC parameters to be passed to HOD and 1-halo
+                radial profile. The order of parameters are:
+                gamma, log10Mc, sigmaM, Ac, 
+                As, M0, M1, alpha,
+                fexp, tau, lambda_NFW. 
+                    
     Returns:
         res : shape (k X Mh X z)
     """
     
-    assert Ncen.shape()[0] == 2, "Ncen must be of shape (Mh X z)"
-    assert Nsat.shape()[0] == 2, "Nsat must be of shape (Mh X z)"
-    assert unfw.shape()[0] == 3, "unfw profile must be of shape (k X Mh X z)"
+    params_Nc = params[:4]
+    params_Ns = params[4:8]
     
-    #reshape to include k dimension to multiply with unfw
-    Nsat = Nsat[np.newaxis, :, :] 
-    Ncen = Ncen[np.newaxis, :, :]
-    res = Nsat * unfw 
-    res = Ncen + res 
+    Nc = Ncen(params_Nc, gal_type = gal_type) # (Mh,)
+    Ns = Nsat(params_Ns) # (Mh,)
+    #u = uprof_mixed(params_prof, rho_crit, rad, dlnpk_dlnk) # (k, Mh, z)
+    
+    res = Nc[np.newaxis, :] + Ns[np.newaxis, :] * u
     
     return res 

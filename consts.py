@@ -12,8 +12,14 @@ import numpy as np
 import pandas as pd 
 import pickle
 
+# analysis variables
+NSIDE = 2048 #FIXME: current galaxy windows are at 1024 
+LMAX = 2000
+LMIN = 100
+ell = np.arange(LMIN, LMAX)
+
 # global variables 
-speed_of_light = spconst.c # in ms^-1
+speed_of_light = apconst.c # in ms^-1
 k_B = spconst.k # Boltzmann constant J K^-1
 hp = spconst.h # Planck's constant J Hz^-1
 hp_over_kB = hp/k_B # h/kB for faster calculation of h/k * nu/T unit: K Hz^-1
@@ -32,7 +38,7 @@ fsub = 0.134 # from Abhi's code, further note below.
 #         of the sub-halo mf and and integrating it over all the subhalo masses
 #         and dividing it by the total halo mass.
 
-
+##--COSMOLOGY--##
 OmegaM0 = planck.Om0
 Ode0 = planck.Ode0
 H0 = planck.H0
@@ -42,81 +48,93 @@ with open('data/plin_unit_h.p', 'rb') as handle:
     Plin = pickle.load(handle)
 
 # halo mass function from colossus
-with open('data/hmfz.p', 'rb') as handle:
+with open('data/hmfz_h.p', 'rb') as handle:
     hmfz_dict = pickle.load(handle)
-Mh = hmfz_dict['Mh']
+Mh_Msol = hmfz_dict['M_Msol_h']/planck.h # units of Msol
 log10Mh = np.log10(Mh)
-hmfz = hmfz_dict['hmfz']
+hmfz = hmfz_dict['hmfz_log10M'] * planck.h**3 # units of (Mpc)^-3
 
+# useful cosmology arrays to precalculate
+chi_list = planck.comoving_distance(Plin['z']) # comoving distances
+Hz_list = planck.H(Plin['z']) # H(z)
+Omegab_to_OmegaM_over_z = planck.Ob(Plin['z'])/planck.Om(Plin['z'])
+rho_crit = (planck.critical_density(Plin['z'])).to(u.Msun/u.Mpc**3).value # units of Msol/Mpc^3
+mean_density0 = (OmegaM0*planck.critical_density0).to(u.Msun/u.Mpc**3).value # Returns mean density at z = 0, units of Msol/Mpc^3
+
+##--SUBHALO MASS FUNCTION--##
 # pre-calculate central halo mass Mhc = Mh * (1 - fsub)
-Mhc = Mh * (1 - fsub)
+Mhc_Msol = Mh_Msol * (1 - fsub)
 
 # define subhalo mass function grid 
 log10ms_min = 6 # Msun according to pg 11 of 2310.10848 
 num_points = 100 # number of subhalo masses sampled for given Mh
-ms = np.logspace(log10ms_min, np.log10(Mhc), num_points)
+ms_Msol = np.logspace(log10ms_min, np.log10(Mhc_Msol), num_points) # units of Msol
 
 # ratio of ms to Mhc, needed in SFRsub calculation.
-ms_to_Mhc = ms/np.expand_dims(Mhc, axis = 0) 
+ms_to_Mhc_Msol = ms_Msol/np.expand_dims(Mhc_Msol, axis = 0) 
 
 # subhalo mass function
 # based on 12 of 0909.1325.
 #FIXME: is this the state of the art? 
 def subhmf(m, M):
     """Vectorized f function that takes m and M arrays."""
+    
     mass_ratio = m/M[np.newaxis, :]
-    res = 0.30 * (mass_ratio)**(-0.7)
+    res = 0.13 * (mass_ratio)**(-0.7)
     expterm = -9.9 * (mass_ratio)**2.5
-    return res * np.exp(expterm) ## FIXME: Abhi's subhmf code has additional * log(10)? 
+    
+    res = res * np.exp(expterm) * np.log(10) # convert dN/dlnM_sub to dN/dlog_10M_sub
+    
+    return res 
 
-subhalomf = subhmf(ms, Mh)
+subhalomf = subhmf(ms_Msol, Mhc_Msol)
 
+###---GALAXY DICTIONARIES---### 
 # store all relevant galaxy information
 dict_gal = {}
 
 # dict with ELG properties based on Karim et al. 2024
 dict_gal['ELG'] = {}
 
-dndz = pd.read_csv("data/gal/elg_fuji_pz_single_tomo.csv")
-dict_gal['ELG']['z'] = dndz['Redshift_mid'].values
-dict_gal['ELG']['pz'] = dndz['pz'].values
+with open('data/gal/dndz_extended.p', 'rb') as handle:
+    dndz_ELG = pickle.load(handle)
+    
+# read in original data
+dict_gal['ELG']['z'] = dndz['zrange']
+dict_gal['ELG']['pz'] = dndz['dndz'].mean(axis=0) # mean of all photo-z realizations
+
+# extend original data to match full redshift range
+dict_gal['ELG']['z'] = Plin['z']
+dict_gal['ELG']['pz'] = np.interp(Plin['z'], dict_gal['ELG']['z'], 
+                                  dict_gal['ELG']['pz'],
+                                  left=0, right=0) # do not extrapolate values
+
 dict_gal['ELG']['mag_bias_alpha'] = 2.225
 
-# cosmology-related values
-dict_gal['ELG']['chi'] = planck.comoving_distance(dict_gal['ELG']['z'])
-dict_gal['ELG']['Hz'] = planck.H(dict_gal['ELG']['z'])
-
-def dchi_dz(z):
-    """
-    Returns differential element dchi/dz (z) 
-    """
-    
-    a = apconst.c/(H0*np.sqrt(OmegaM0*(1.+z)**3 + planck.Ode0))
-    return a.value
-dict_gal['ELG']['dchi_dz'] = dchi_dz(dict_gal['ELG']['z'])
+# shot noise 
+dict_gal['ELG']['shot_noise'] = 4.618165243131944e-08 # from Karim et al. 2024 (assuming form delta_g,est = Wg * delta_g)
 
 # dict with ELG HOD properties based on 
 # Table 7 of Rocher et al. 2023
-dict_gal['ELG']['HOD'] = {}
-dict_gal['ELG']['HOD']['Ac'] = 0.1
-dict_gal['ELG']['HOD']['log10Mc'] = 11.64
-dict_gal['ELG']['HOD']['sigmaM'] = 0.30
-dict_gal['ELG']['HOD']['gamma'] = 5.47
-dict_gal['ELG']['HOD']['As'] = 0.41
-dict_gal['ELG']['HOD']['alpha'] = 0.81
-dict_gal['ELG']['HOD']['M0'] = 10**11.20
-# based on Eq 3.9 of Rocher et al. 2023
-dict_gal['ELG']['HOD']['M1'] = 10**13.84 * dict_gal['ELG']['HOD']['As']**(1/dict_gal['ELG']['HOD']['alpha'])
-
-Omegab_to_OmegaM_over_z = planck.Ob(dict_gal['ELG']['z'])/planck.Om(dict_gal['ELG']['z'])
-dict_gal['ELG']['Omegab_to_OmegaM_over_z'] = Omegab_to_OmegaM_over_z
+# dict_gal['ELG']['HOD'] = {}
+# dict_gal['ELG']['HOD']['Ac'] = 0.1
+# dict_gal['ELG']['HOD']['log10Mc'] = 11.64
+# dict_gal['ELG']['HOD']['sigmaM'] = 0.30
+# dict_gal['ELG']['HOD']['gamma'] = 5.47
+# dict_gal['ELG']['HOD']['As'] = 0.41
+# dict_gal['ELG']['HOD']['alpha'] = 0.81
+# dict_gal['ELG']['HOD']['M0'] = 10**11.20
+# # based on Eq 3.9 of Rocher et al. 2023
+# dict_gal['ELG']['HOD']['M1'] = 10**13.84 * dict_gal['ELG']['HOD']['As']**(1/dict_gal['ELG']['HOD']['alpha'])
 
 # dict with IR HOD properties based on pg.6 of 2310.10848
 dict_gal['IR'] = {}
 dict_gal['IR']['HOD'] = {}
 dict_gal['IR']['HOD']['sigma_lnM'] = 0.4 #transition smoothing scale #FIXME: fixing this feels ad hoc?
 
-# star formation constants
+##--SFR CALCULATIONS--##
+
+# UNITS of Msol NOT Msol/h
 def BAR(M, z):
     """
     Returns baryon accretion rate for models M21 and Y23.
@@ -132,7 +150,11 @@ def BAR(M, z):
         """
         Returns Mass Growth Rate. 
         
-        From 2.37 of 2310.10848.
+        From 2.37 of 2310.10848 (originally 2 of 1001.2304).
+        
+        Args:
+            M : halo mass UNITS OF Msol NO little h
+            z : redshift
         """
         
         # Reshape M and z to enable broadcasting
@@ -147,10 +169,9 @@ def BAR(M, z):
     
     return bar
 
-redz = dict_gal['ELG']['z'] #FIXME: needs to be changed/refactored to deal with other samples
 # pre-calculate BAR of central and sub haloes based on fsub 
-bar_c = BAR(Mhc, redz) # shape (Mh, z)
-bar_sub = BAR(ms, redz) #shape (ms, Mh, z)
+bar_c = BAR(Mhc_Msol, Plin['z']) # shape (Mh, z) #FIXME: check if this conversion is right
+bar_sub = BAR(ms_Msol, Plin['z']) #shape (ms, Mh, z)
 
 ## pre-calculate S_eff variables (parametrized version)
 # Planck frequencies for CIB are: (100, 143, 217, 353, 545, 857) GHz frequencies
@@ -170,21 +191,19 @@ snu_eff_interp_func_M23 = interp1d(redshifts_M23, snu_eff_M23,
                                    kind='linear',
                                    bounds_error=False, 
                                    fill_value=0.)
-snu_eff_M23_ELG_z_bins = snu_eff_interp_func_M23(redz)
-
+snu_eff_z = snu_eff_interp_func_M23(Plin['z'])
 
 # For parametric model, generate grid: nu_prime = (1 + z) * nu
 # broad cast properly to get nu_prime_list of shape (nu, z)
 nu_grid = np.linspace(1e2,1e3,10000)*ghz # sample 10k points from 100 to 1000 Ghz
-nu_primes = nu_grid[:, np.newaxis] * (1 + redshifts_M23[np.newaxis, :]) # match redshift grid as Planck for convolution
-chi_cib = planck.comoving_distance(redshifts_M23).to(u.m).value # in meter 
 
-##--halo.py--##
-rho_crit_ELG = (planck.critical_density(dict_gal['ELG']['z'])).to(u.Msun/u.Mpc**3).value # units of Msol/Mpc^3
-mean_density0 = (OmegaM0*planck.critical_density0).to(u.Msun/u.Mpc**3).value # Returns mean density at z = 0, units of Msol/Mpc^3
+#FIXME: does this need to be over Planck or can we match ELG spacing? 
+nu_primes = nu_grid[:, np.newaxis] * (1 + redshifts_M23[np.newaxis, :]) # match redshift grid as Planck for convolution
+chi_cib = planck.comoving_distance(redshifts_M23).to(u.m).value # in meter #FIXME: same question as before
 
 # Lagrangian radius of a dark matter halo
-mass_to_radius = (3*Mh/(4*np.pi*mean_density0))**(1/3) # units of Mpc^3 shape (Mh,)
+#FIXME: Mh is in units of little h
+mass_to_radius = (3*(Mhc_Msol)/(4*np.pi*mean_density0))**(1/3) # units of Mpc, shape (Mh,)
 
 def get_k_R():
     """
@@ -195,11 +214,11 @@ def get_k_R():
     evaluated at a certain value of k such that k = kappa*2*pi/rad
     This kappa value comes out to be 0.69 according to their calculations.
     """
-    rad = mass_to_radius
+    rad = mass_to_radius # units of Mpc
     kappa = 0.69
     
     res = kappa * 2 * np.pi / rad
     
     return res
 
-k_R = get_k_R() # shape (Mh,)
+k_R = get_k_R() # shape (Mh,) # units of 1/Mpc

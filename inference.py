@@ -18,6 +18,16 @@ params_hod = {}
 #FIXME: read data and invcov
 
 #FIXME: define ordering of theta
+# ordering of theta:
+# SFR params, SED params (if Y23)
+# hmalpha : relaxation parameter controlling transition point of 1h and 2h terms 
+# Ncen (4): gamma, log10Mc, sigmaM, Ac, 
+# Nsat (4): As, M0, M1, alpha,
+# radial profile (3): fexp, tau, lambda_NFW
+# SFR (6): L0 (only for Y23), etamax (only for M23), mu_peak0, mu_peakp, sigma_M0, tau, zc
+# SED (3): beta, T0, alpha (only for Y23)
+## TOTAL: 17 params
+
 #FIXME: for pocomc prior has to be set up differently
 def log_prior(theta):
     etamax, mu_p0, mu_pp, sigma_M0, tau, zc, delta = theta
@@ -33,7 +43,7 @@ def log_likelihood(theta):
     Returns gaussian likelihood
     """
     
-    model = ps.pseudo_Cell(theta, M = coupling_matrix, B = binning_operator)
+    model = ps.pcl(theta, M = coupling_matrix, B = binning_operator)
     log_ll = (model - data) @ invcov @ (model - data)
     
     return log_ll
