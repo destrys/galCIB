@@ -15,7 +15,7 @@ import halo
 OmegaM0 = consts.OmegaM0
 
 # read in halo constants
-Mh = consts.Mh
+Mh = consts.Mh_Msol
 log10Mh = consts.log10Mh
 
 # read in ELG constants
@@ -34,7 +34,7 @@ M1 = dict_gal['HOD']['M1']
 alpha = dict_gal['HOD']['alpha']
 
 # read in CIB galaxy constants
-IR_sigma_lnM = consts.dict_gal['IR']['HOD']['sigma_lnM']
+#IR_sigma_lnM = consts.dict_gal['IR']['HOD']['sigma_lnM']
 
 def Ncen_GHOD(log10Mc, sigmaM, Ac):
     """
@@ -94,8 +94,9 @@ def Ncen(hod_params, gal_type):
         res = first_term * second_term
     
     elif gal_type == 'IR':
-        Mmin = z_evolution_model(hod_params) #FIXME: figure out if z evolving or not
-        erf_term = np.log(Mh/Mmin)/IR_sigma_lnM #FIXME
+        Mmin, IR_sigma_lnM = hod_params
+        #Mmin = z_evolution_model(hod_params) #FIXME: figure out if z evolving or not
+        erf_term = np.log(Mh/Mmin)/IR_sigma_lnM
         res = 0.5 * (1 + ss.erf(erf_term)) 
         
     else:

@@ -5,6 +5,9 @@ This module contains functions useful for CIB halo modelling.
 import numpy as np
 import consts
 
+# for HOD of IR galaxies
+import gal 
+
 # integrates using simpson method 
 from scipy.integrate import simpson
 from scipy.interpolate import interp1d
@@ -499,35 +502,25 @@ def SFRc(params, model):
         model : model name 
     """
     
-    if model == 'S12':
-        # SFR_c (Mh, z) propto Sigma_c (M,z) Phi (z) 
-        # from 2.34 of 2310.10848
-        
-        sigma_M0, mu_peak0, mu_peakp, delta = params
-        
-        phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
-        # Reshape phi(z) to broadcast across rows of Sigma
-        phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
-        sigma = Sigma(sigma_M0, mu_peak0, mu_peakp)
-        sfrc =  mean_N_IR_c * sigma * phiCIB 
-    
-    elif model == 'M21':
+    if model == 'M21':
         #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)
-        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc = params
-        
+        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc, Mmin_IR, IR_sigma_lnM = params
+        IR_hod_params = (Mmin_IR, IR_sigma_lnM)
         sfr = SFR(etamax, mu_peak0, mu_peakp, 
                   sigma_M0, tau, zc)
+        mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')
         sfrc = sfr * mean_N_IR_c #FIXME: what is this?
 
     elif model == 'Y23':
-        mu_peak0, mu_peakp, sigma_M0, tau, zc = params
-        
+        mu_peak0, mu_peakp, sigma_M0, tau, zc, Mmin_IR, IR_sigma_lnM = params
+        IR_hod_params = (Mmin_IR, IR_sigma_lnM)
         # Model cannot constrain etamax so set to 1.
         # Normalization is absorbed by L0 param in SED.
         sfr = SFR(etamax = 1, mu_peak0=mu_peak0,
                   mu_peakp=mu_peak0, sigma_M0=sigma_M0,
                   tau=tau, zc=zc)
-        sfrc = sfr * mean_N_IR_c #FIXME: what is this?
+        mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')
+        sfrc = sfr * mean_N_IR_c
         
     else:
         print("Not correct model.")
@@ -538,23 +531,12 @@ def SFRsub(params, model):
     """
     Returns SFR of subhalos. 
     """
-    if (model == 'S12'):
-        # SFR_s (Mh, z) propto Sigma_s (M,z) Phi (z) 
-        # from 2.34 of 2310.10848
-        
-        sigma_M0, mu_peak0, mu_peakp, delta = params
-        
-        phiCIB = phi_CIB(delta) #FIXME: what does this Phi represent?
-        # Reshape phi(z) to broadcast across rows of Sigma
-        phiCIB = phiCIB[np.newaxis, :]  # Make phi a row vector of shape (1, len(z))
-        sigma = Sigma(sigma_M0, mu_peak0, mu_peakp)
-        sfrc =  mean_N_IR_c * sigma * phiCIB 
-        
-    elif (model == 'M21'):
+    
+    if (model == 'M21'):
         # from 2.41 of 2310.10848
         # SFRs (m|M) = min(SFR(m), m/M * SFR(M))
         
-        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc = params
+        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc, _, _ = params
         
         option1 = SFR(etamax, mu_peak0, mu_peakp, 
                       sigma_M0, tau, zc,
@@ -570,7 +552,7 @@ def SFRsub(params, model):
         return sfrs
     
     elif (model == 'Y23'):
-        mu_peak0, mu_peakp, sigma_M0, tau, zc = params
+        mu_peak0, mu_peakp, sigma_M0, tau, zc, _, _ = params
         
         option1 = SFR(etamax=1, mu_peak0=mu_peak0,
                       mu_peakp=mu_peakp, sigma_M0=sigma_M0,

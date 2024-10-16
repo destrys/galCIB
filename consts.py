@@ -51,7 +51,7 @@ with open('data/plin_unit_h.p', 'rb') as handle:
 with open('data/hmfz_h.p', 'rb') as handle:
     hmfz_dict = pickle.load(handle)
 Mh_Msol = hmfz_dict['M_Msol_h']/planck.h # units of Msol
-log10Mh = np.log10(Mh)
+log10Mh = np.log10(Mh_Msol)
 hmfz = hmfz_dict['hmfz_log10M'] * planck.h**3 # units of (Mpc)^-3
 
 # useful cosmology arrays to precalculate
