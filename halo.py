@@ -14,11 +14,14 @@ import consts
 import cosmology
 
 # import halo consts
-Mh = consts.Mh
-kk = consts.Plin['kh'] #FIXME: make sure what the unit of k is, if k/h or k
-power = consts.Plin['pk'] #FIXME: make sure what the unit of Pk is
+Mh = consts.Mhc_Msol
+#kk = consts.Plin['k'] #FIXME: make sure what the unit of k is, if k/h or k
+#power = consts.Plin['pk'] #FIXME: make sure what the unit of Pk is
+kk = consts.k_grid_over_ell # (k, z)
+power = consts.Pk_array_over_ell # (z, k)
 
-def uprof_mixed(prof_params, rad, dlnpk_dlnk):
+def uprof_mixed(prof_params, rad200, c, c_term,
+                plot=False):
     """
     Returns Fourier Transform of halo profile mimicing DESI ELGs. 
     
@@ -36,12 +39,15 @@ def uprof_mixed(prof_params, rad, dlnpk_dlnk):
     
     fexp, tau, lambda_NFW = prof_params
     
-    nfw_term, rs_original = nfwfourier_u(lambda_NFW, rad, dlnpk_dlnk)
+    nfw_term, rs_original = nfwfourier_u(lambda_NFW, rad200, c, c_term)
     exp_term = expfourier_u(tau=tau, rs = rs_original)
     
     res = fexp * exp_term + (1-fexp) * nfw_term
     
-    return res
+    if plot: # only to plot 
+        return res, exp_term, nfw_term
+    else:
+        return res
 
 def expfourier_u(tau, rs):
     """
@@ -56,13 +62,12 @@ def expfourier_u(tau, rs):
     
     rs_times_tau = rs*tau # (Mh, z)
     rs_times_tau = np.expand_dims(rs_times_tau, axis = 0) # (k, Mh, z)
-    num = 2 * (rs_times_tau)**3
-    denom = ((rs_times_tau)**2 * kk[:, np.newaxis, np.newaxis]**2 + 1)**2
-    res = num/denom
+    denom = ((rs_times_tau)**2 * kk[:, np.newaxis, :]**2 + 1)**2
+    res = 1/denom
     
     return res
     
-def nfwfourier_u(lambda_NFW, rad, dlnpk_dlnk):
+def nfwfourier_u(lambda_NFW, rad200, c, c_term):
     """
     Returns Fourier Transform of the NFW profile.
     
@@ -76,11 +81,11 @@ def nfwfourier_u(lambda_NFW, rad, dlnpk_dlnk):
         lambda_NFW : rescaling factor of rs
     """
     
-    rs_original = r_star(rad, dlnpk_dlnk) # (Mh, z)
+    rs_original = rad200 # (Mh, z)
     rs_rescaled = rs_original/lambda_NFW
-    c = nu_to_c200c(rad, dlnpk_dlnk) # (Mh, z)
-    c_term = ampl_nfw(c) # (Mh, z)
-    q = kk[:, np.newaxis, np.newaxis] * rs_rescaled[np.newaxis,:,:] # (k, Mh, z)
+    #c = nu_to_c200c(rad, dlnpk_dlnk) # (Mh, z)
+    #c_term = ampl_nfw(c) # (Mh, z)
+    q = kk[:, np.newaxis, :] * rs_rescaled[np.newaxis,:,:] # (k, Mh, z)
     
     # broadcast to match q
     c = np.expand_dims(c, axis = 0) 
@@ -91,7 +96,7 @@ def nfwfourier_u(lambda_NFW, rad, dlnpk_dlnk):
     
     cos_q_term = np.cos(q) * (Ci_qcq - Ci_q)
     sin_q_term = np.sin(q) * (Si_qcq - Si_q)
-    sin_qc_term = np.sin(c * q)/(1 + c*q)
+    sin_qc_term = np.sin(c * q)/(q + c*q)
     
     unfw = c_term *(cos_q_term + sin_q_term - sin_qc_term) # (k, Mh, z)
     
@@ -200,14 +205,17 @@ def sigma(rad):
     Returns:
         res: Variance at size of radius rad shape (Mh, z)
     """
+
+    #rk = rad[:,:,np.newaxis] * kk[np.newaxis,np.newaxis,:] # shape (Mh, z, kk)
+    rk = rad[np.newaxis,:,:] * kk[:,np.newaxis,:] # (k, Mh, z)
+    rest = power * kk**3 # shape (k, z)
     
-    rk = rad[:,:,np.newaxis] * kk[np.newaxis,np.newaxis,:] # shape (Mh, z, kk)
-    rest = power * kk**3 # shape (z, kk)
-    
-    lnk = np.log(kk) # shape (kk,)
-    integ = rest*W(rk)**2 # shape (Mh, z, kk)
-    
-    sigm = (0.5/np.pi**2) * simpson(integ, x=lnk, axis=-1) # integrating along kk
+    lnk = np.log(kk) # shape (k,z)
+    #integ = rest*W(rk)**2 # shape (Mh, z, kk)
+    Wrk = W(rk) # (k, Mh, z)
+    integ = rest[:,np.newaxis,:] * Wrk**2 #(k,Mh,z)
+    sigm = (0.5/np.pi**2) * simpson(integ, x=lnk[:,np.newaxis,:],
+                                    axis=0) # integrating along kk
     res = np.sqrt(sigm)
 
     return res
@@ -227,7 +235,7 @@ def W(rk):
     return res
 
 #DONE
-def r_delta(delta_h = 200): #FIXME: how many z bins are we calculating rho_crit in
+def r_delta(delta_h = 200):
     """
     Returns radius of the halo containing amount of matter
     corresponding to delta times the critical density of 
@@ -275,19 +283,22 @@ def get_dlnpk_dlnk():
     In order to acheive this, we have to smooth out the
     slope of the ps at lower k. But we have checked that the results
     do not vary significantly with the bump.
+    
+    Returns:
+        res : (Mh, z)
     """
     
-    grad = np.zeros_like(power) # shape (z, kk)
+    grad = np.zeros_like(power) # shape (k, z)
     grad[:,:-1] = np.diff(np.log(power)) / np.diff(np.log(kk))
     
     #FIXME: is this not just copying the last value again? 
-    grad[:,-1] = (np.log(power[:,-1]) - np.log(power[:,-2]))/(np.log(kk[-1]) - np.log(kk[-2]))
+    grad[:,-1] = (np.log(power[:,-1]) - np.log(power[:,-2]))/(np.log(kk[:,-1]) - np.log(kk[:,-2]))
     kr = consts.k_R # (Mh,)
     
-    res = np.zeros((len(kr), power.shape[0])) # shape(Mh, z)
+    res = np.zeros((len(kr), power.shape[1])) # shape(Mh, z)
     
-    for i in range(power.shape[0]):
-        res[:,i] = np.interp(kr, kk, grad[i]) # loop over per redshift
+    for i in range(power.shape[1]):
+        res[:,i] = np.interp(kr, kk[:,i], grad[:,i]) # loop over per redshift
     
     return res
 

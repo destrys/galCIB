@@ -18,8 +18,8 @@ from colossus.lss import mass_function
 z_all = np.insert(np.arange(0.05, 10.22, 0.1), 0, 0.)
 
 # k range covering up to k_max = 10
-k_all = np.logspace(0.0001, 10.0, 500)
-
+k_all = np.logspace(-4, 1, 500)
+print(k_all)
 ##--CAMB--##
 pars = camb.set_params(H0=planck.H0.value, 
                        ombh2=planck.Ob0 * planck.h**2, 
@@ -38,7 +38,9 @@ results = camb.get_results(pars)
 
 # Linear P_mm interpolator for z_all and k_all grid
 # in units of little h
-PK = results.get_matter_power_interpolator(nonlinear=False, hubble_units=True, k_hunit=True)
+PK = results.get_matter_power_interpolator(nonlinear=False, 
+                                           hubble_units=False, 
+                                           k_hunit=False)
 PKgrid = PK.P(z_all, k_all)
 
 SAVE = True
@@ -48,10 +50,10 @@ if SAVE:
     plin_dict = {}
 
     plin_dict['z'] = z_all
-    plin_dict['kh'] = k_all
-    plin_dict['pkh'] = PKgrid
+    plin_dict['k'] = k_all
+    plin_dict['pk'] = PKgrid
 
-    with open('data/plin_unit_h.p', 'wb') as handle:
+    with open('data/plin_unit_Mpc.p', 'wb') as handle:
         pickle.dump(plin_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 ##--colossus--##

@@ -32,17 +32,22 @@ bar_c = consts.bar_c
 bar_sub = consts.bar_sub
 
 # halo constants
-Mh = consts.Mh
-Mhc = consts.Mhc # central galaxies halo mass based on fsub
-ms = consts.ms # subhalo mass grid based on fsub
-ms_to_Mhc = consts.ms_to_Mhc # subhalo mass grid as a fraction with Mhc
+Mh = consts.Mh_Msol
+Mhc = consts.Mhc_Msol # central galaxies halo mass based on fsub
+ms = consts.ms_Msol # subhalo mass grid based on fsub
+ms_to_Mhc = consts.ms_to_Mhc_Msol # subhalo mass grid as a fraction with Mhc
 hmfz = consts.hmfz # halo mass function
 subhalomf = consts.subhalomf # subhalo mass function
+log10ms = np.expand_dims(np.log10(ms), axis = -1)
+
+# survey constants
+z = consts.Plin['z']
+chi = consts.chi_list.value
 
 # galaxy constants
-dict_gal = consts.dict_gal['ELG']
-chi = dict_gal['chi'] # comoving distance
-z = dict_gal['z']
+# dict_gal = consts.dict_gal['ELG']
+# chi = dict_gal['chi'] # comoving distance
+# z = dict_gal['z']
 
 # SED constants
 dgamma = 1.7
@@ -64,30 +69,6 @@ def get_W_cib(z_cib): #FIXME
 
 ###--END OF RADIAL KERNEL--###
 
-# def cibterm(djc_dlogMh, djs_dlogMh, unfw): #FIXME: needs testing
-#     """
-#     Returns the first bracket in A13 of 2204.05299.
-#     This corresponds to the CIB term in calculating Pk. 
-    
-#     Args:
-#         djc_dlogMh : Specific emissivity of central galaxies (nu, Mh, z)
-#         djs_dlogMh : Specific emissivity of sat galaxies (nu, Mh, z)
-#         unfw : Fourier transform the NFW profile inside the halo. (k, Mh, z)
-
-#     Returns:
-#         res : shape (k, nu, Mh, z)
-#     """
-    
-#     #reshape to include k dimension to multiply with unfw
-#     djc_dlogMh = np.expand_dims(djc_dlogMh, axis = 0)
-#     djs_dlogMh = np.expand_dims(djs_dlogMh, axis = 0)
-    
-#     # reshape to include nu dimension in unfw
-#     res = djs_dlogMh * np.expand_dims(unfw, axis = 1)
-#     res = res + djc_dlogMh
-    
-#     return res
-
 def cibterm(params, u, cib_model):
     """
     Returns the first bracket in A13 of 2204.05299.
@@ -102,12 +83,12 @@ def cibterm(params, u, cib_model):
         res : shape (k, nu, Mh, z)
     """
     
-    if (cib_model == 'S21') | (cib_model == 'Y23'):
+    if (cib_model == 'Y23'):
         L0 = params[0] # overall normalization parameter of the SED
         params_sfr = params[1:-3] 
         params_seff = params[-3:] # last three params
         seff = L0 * Seff(params_seff, model = cib_model) # shape (nu, z)
-    elif cib_model == 'M23':
+    elif cib_model == 'M21':
         params_sfr = params
         seff = Seff(params=None, model = cib_model) # Non-parametric model
     else:
@@ -115,50 +96,49 @@ def cibterm(params, u, cib_model):
         
     djc = djc_dlogMh(params_sfr, seff, cib_model)
     djsub = djsub_dlogMh(params_sfr, seff, cib_model)
+    final_term = djc[:,np.newaxis,:,:] + djsub[:,np.newaxis,:,:] * u[np.newaxis,:,:,:]
     
-    final_term = np.expand_dims(djc, axis=0) + np.expand_dims(djsub, axis=0) * u
-    
-    return final_term
+    return final_term, djc, djsub
     
 
 ###--START OF C_ell HELPER FUNCTIONS--###
 
-def jbar(params, model):
-    """
-    Returns the mean emissivity of the CIB halos.
+# def jbar(params, model):
+#     """
+#     Returns the mean emissivity of the CIB halos.
     
-    Args:
-        nu : measurement frequency
-        Mh : halo mass
+#     Args:
+#         nu : measurement frequency
+#         Mh : halo mass
     
-    Returns:
-        res : of shape (nu, z)
-    """
+#     Returns:
+#         res : of shape (nu, z)
+#     """
     
-    ##FIXME: maybe calculate phiCIB here and pass it down to relevant functions
-    ## FIXME: phiCIB only needed if we test model S12
+#     ##FIXME: maybe calculate phiCIB here and pass it down to relevant functions
+#     ## FIXME: phiCIB only needed if we test model S12
     
-    if (model == 'S21') | (model == 'Y23'):
-        params_sfr = params[:-3] 
-        params_seff = params[-3:] # last three params
-        seff = Seff(params_seff, model = model) # shape (nu, z)
-    elif model == 'M23':
-        params_sfr = params
-        #FIXME: call fitted seff here. 
-    else:
-        print("Did not input correct model.")
+#     if (model == 'S21') | (model == 'Y23'):
+#         params_sfr = params[:-3] 
+#         params_seff = params[-3:] # last three params
+#         seff = Seff(params_seff, model = model) # shape (nu, z)
+#     elif model == 'M23':
+#         params_sfr = params
+#         #FIXME: call fitted seff here. 
+#     else:
+#         print("Did not input correct model.")
     
     
-    #djc/s returns of the shape (nu, Mh, z)
-    djdlogmh = djc_dlogMh(params_sfr, seff, 
-                          model) + djsub_dlogMh(params_sfr, seff,
-                                                model)
-    dm = np.log10(Mh[1]/Mh[0])
-    integrand = djdlogmh*hmfz
+#     #djc/s returns of the shape (nu, Mh, z)
+#     djdlogmh = djc_dlogMh(params_sfr, seff, 
+#                           model) + djsub_dlogMh(params_sfr, seff,
+#                                                 model)
+#     dm = np.log10(Mh[1]/Mh[0])
+#     integrand = djdlogmh*hmfz
     
-    # integrate along log mass axis 
-    res = simpson(integrand, dx=dm, axis = 1)
-    return res
+#     # integrate along log mass axis 
+#     res = simpson(integrand, dx=dm, axis = 1)
+#     return res
 
 def djc_dlogMh(params_sfr, seff, model):
     """
@@ -185,8 +165,7 @@ def djc_dlogMh(params_sfr, seff, model):
     # of the sub-halo mf and and integrating it over all the subhalo masses
     # and dividing it by the total halo mass.
     
-    prefact = chi**2 * (1 + z)
-    prefact = prefact/KC # shape (z,)
+    prefact = chi**2 * (1 + z)/KC # shape (z,)
     
     sfrc = SFRc(params_sfr, model) #shape (Mh, z)
     
@@ -221,7 +200,7 @@ def djsub_dlogMh(params_sfr, seff, model):
     sfrsub = SFRsub(params_sfr, model)
     integrand = sfrsub * np.expand_dims(subhalomf, axis = -1)
     integral = simpson(y=integrand,
-                       x = np.expand_dims(np.log10(ms), axis = -1),
+                       x = log10ms,
                        axis = 0) # integrate along the ms axis, shape (Mh, z)
     
     # broadcast shapes properly for multiplication
@@ -356,13 +335,14 @@ def Theta(params):
     
     # calculate SED 
     flag = nu_primes < nu0z[np.newaxis, :]
+    
     theta = np.where(flag, 
-                     prenu0(beta, Td, nu_primes), 
+                     prenu0(beta, Td, nu_primes).value, 
                      postnu0(dgamma, nu_primes))
 
     # normalize SED such that theta(nu0) = 1
     theta_normed = np.where(flag, 
-         theta/prenu0(beta, Td, nu0z[np.newaxis, :]),
+         theta/prenu0(beta, Td, nu0z[np.newaxis, :]).value,
          theta/postnu0(dgamma, nu0z[np.newaxis, :]))
     
     return theta_normed
@@ -451,23 +431,19 @@ def Seff(params, model):
     if model == 'Y23':
         
         seff = Theta(params)
-        #print(seff[0])
         seff_int, seff = convolve_with_Planck(seff) # model images per Planck filter
-        print(seff_int.max())
-        print(seff.shape)
-        # divide out by distance
-        # Seff = theta/(chi^2 * (1+z))
-        seff = seff/(1 + z_cib_planck[np.newaxis, :])
-        print(seff[0].shape)
-        seff = seff/chi_cib[np.newaxis, :]**2
-        print(chi_cib[0])
         
-    elif model == 'M23':
-        seff = consts.snu_eff_M23_ELG_z_bins
+        # divide out by distance
+        seff = seff/(1 + z_cib_planck[np.newaxis, :])
+        seff = seff/chi_cib[np.newaxis, :]**2
+        
+    elif model == 'M21':
+        seff = consts.snu_eff_z
     else:
         print("Not correct model.")
         
-    return seff_int, seff  
+    #return seff_int, seff  
+    return seff
 
 ###--END OF S_eff MODELING--###
 
@@ -504,12 +480,13 @@ def SFRc(params, model):
     
     if model == 'M21':
         #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)
+        
         etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc, Mmin_IR, IR_sigma_lnM = params
         IR_hod_params = (Mmin_IR, IR_sigma_lnM)
         sfr = SFR(etamax, mu_peak0, mu_peakp, 
                   sigma_M0, tau, zc)
-        mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')
-        sfrc = sfr * mean_N_IR_c #FIXME: what is this?
+        mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')[:,np.newaxis] #FIXME: only if no z evolution model of N_c
+        sfrc = sfr * mean_N_IR_c
 
     elif model == 'Y23':
         mu_peak0, mu_peakp, sigma_M0, tau, zc, Mmin_IR, IR_sigma_lnM = params
@@ -601,16 +578,29 @@ def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
         M_re = np.expand_dims(Mhc, axis = -1) # Shape (Mh, 1)
     z_re = z[np.newaxis, :]  # Shape (1, len(z))
     
-    Mpeak = mu_peak0 + mu_peakp * z_re/(1+z_re) # M_peak may change with z 
-    
+    #Mpeak = mu_peak0 + mu_peakp * z_re/(1+z_re) # M_peak may change with z 
+    Mpeak = mu_peak0 + mu_peakp * z/(1+z)
+    Mpeak = 10**Mpeak
     # parametrization based on 2.39 of 2310.10848.
+    
     sigmaM = np.where(M_re < Mpeak, sigma_M0, 
-                      sigma_M0 * (1 - tau/zc * 
-                                  np.maximum(0, zc - z_re)))  # Shape (len(M), len(z))
+                      sigma_M0 - tau * np.maximum(0, zc - z_re))  # Shape (len(M), len(z))
     
-    eta_val = etamax * np.exp(-0.5 * ((np.log(M_re) - np.log(Mpeak))/sigmaM)**2)
+    expterm = np.exp(-(np.log(M_re) - np.log(Mpeak))**2/(2 * sigmaM**2))
+    eta_val = etamax * expterm
     
-    return eta_val
+    # sig_z = np.array([max(zc - r, 0.) for r in z])
+    # sigpow = sigma_M0 - tau * sig_z
+    
+    # a = np.zeros((len(Mhc), len(z)))
+    # for i in range(len(Mhc)):
+    #     for j in range(len(z)):
+    #         if Mhc[i] < Meffmax[j]:
+    #             a[i, j] = etamax * np.exp(-(np.log(Mhc[i]) - np.log(Meffmax[j]))**2 / (2 * sigma_M0**2))
+    #         else:
+    #             a[i, j] = etamax * np.exp(-(np.log(Mhc[i]) - np.log(Meffmax[j]))**2 / (2 * sigpow[j]**2))
+    
+    return eta_val #a
 
 ###--END OF SFR MODELING--###
 

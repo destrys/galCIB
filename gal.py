@@ -18,20 +18,24 @@ OmegaM0 = consts.OmegaM0
 Mh = consts.Mh_Msol
 log10Mh = consts.log10Mh
 
-# read in ELG constants
-gal_type = 'ELG'
-dict_gal = consts.dict_gal[gal_type]
-pz = dict_gal['pz']
-z = dict_gal['z']
+# read in survey information
+z = consts.Plin['z']
 
-Ac = dict_gal['HOD']['Ac']
-log10Mc = dict_gal['HOD']['log10Mc']
-sigmaM = dict_gal['HOD']['sigmaM']
-gamma = dict_gal['HOD']['gamma']
-As = dict_gal['HOD']['As']
-M0 = dict_gal['HOD']['M0']
-M1 = dict_gal['HOD']['M1']
-alpha = dict_gal['HOD']['alpha']
+
+# read in ELG constants
+# gal_type = 'ELG'
+# dict_gal = consts.dict_gal[gal_type]
+# pz = dict_gal['pz']
+# z = dict_gal['z']
+
+# Ac = dict_gal['HOD']['Ac']
+# log10Mc = dict_gal['HOD']['log10Mc']
+# sigmaM = dict_gal['HOD']['sigmaM']
+# gamma = dict_gal['HOD']['gamma']
+# As = dict_gal['HOD']['As']
+# M0 = dict_gal['HOD']['M0']
+# M1 = dict_gal['HOD']['M1']
+# alpha = dict_gal['HOD']['alpha']
 
 # read in CIB galaxy constants
 #IR_sigma_lnM = consts.dict_gal['IR']['HOD']['sigma_lnM']
@@ -86,7 +90,7 @@ def Ncen(hod_params, gal_type):
         # Functional form is:
         # <N_c(M)> = <N_c^(GHOD)(M)>[1+erf(gamma*(log10(Mh/Mc))/(sqrt(2)*sigmaM))]
         # From 3.4 of 2306.06319.
-        
+
         gamma, log10Mc, sigmaM, Ac = hod_params
         erf_term = gamma * (log10Mh - log10Mc)/(np.sqrt(2) * sigmaM)
         second_term = (1 + ss.erf(erf_term))
@@ -96,7 +100,7 @@ def Ncen(hod_params, gal_type):
     elif gal_type == 'IR':
         Mmin, IR_sigma_lnM = hod_params
         #Mmin = z_evolution_model(hod_params) #FIXME: figure out if z evolving or not
-        erf_term = np.log(Mh/Mmin)/IR_sigma_lnM
+        erf_term = np.log(Mh/10**Mmin)/IR_sigma_lnM
         res = 0.5 * (1 + ss.erf(erf_term)) 
         
     else:
@@ -119,7 +123,7 @@ def Nsat(hod_params):
     Returns:
         res : vector of size (Mh,)
     """
-    
+
     As, M0, M1, alpha = hod_params
     
     # flag for halo masses for which Mh - M0 > 0;
@@ -130,7 +134,7 @@ def Nsat(hod_params):
     
     return res
 
-def get_Wmu(dict_gal = dict_gal):
+def get_Wmu(dict_gal):
     """
     Returns magnification bias kernel as a func. 
     of redshift of the galaxies.
@@ -138,8 +142,9 @@ def get_Wmu(dict_gal = dict_gal):
     
     z = dict_gal['z']
     pz = dict_gal['pz']
-    chi = dict_gal['chi']
-    Hz = dict_gal['Hz']
+    #chi = dict_gal['chi']
+    chi = consts.chi_list
+    Hz = consts.Hz_list
     mag_bias_alpha = dict_gal['mag_bias_alpha']
     
     
@@ -162,7 +167,7 @@ def get_Wmu(dict_gal = dict_gal):
 
     return mag_bias_term.value # shape (z,)
 
-def get_Wgal(dict_gal = dict_gal):
+def get_Wgal(dict_gal):
     """
     Returns galaxy radial kernel as a func
     of redshift.
@@ -198,8 +203,7 @@ def galterm(params, u, gal_type = 'ELG'): #FIXME: needs testing
     
     Nc = Ncen(params_Nc, gal_type = gal_type) # (Mh,)
     Ns = Nsat(params_Ns) # (Mh,)
-    #u = uprof_mixed(params_prof, rho_crit, rad, dlnpk_dlnk) # (k, Mh, z)
     
-    res = Nc[np.newaxis, :] + Ns[np.newaxis, :] * u
+    res = Nc[np.newaxis, :, np.newaxis] + Ns[np.newaxis, :, np.newaxis] * u
     
     return res 
