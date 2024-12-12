@@ -228,7 +228,7 @@ def cibcrosscib_cell_1h(djc_nu, djc_nu_prime, djsub_nu, djsub_nu_prime,
     integrand1 = djc_nu_re * djsub_nu_prime_re * uprof
     integrand2 = djc_nu_prime_re * djsub_nu_re * uprof 
     integrand3 = djsub_nu_re * djsub_nu_prime_re * uprof**2 
-    integrand_tot = (integrand1 + integrand2 + integrand3) * hmfzT[0]#[:,:,1:]
+    integrand_tot = (integrand1 + integrand2 + integrand3) * hmfzT[0][:,:,1:]
     integral = simpson(y=integrand_tot, dx=dm, axis=1)
     
     if consts.Plin['z'][0] == 0:

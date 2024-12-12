@@ -98,7 +98,7 @@ def cibterm(params, u, cib_model):
     djsub = djsub_dlogMh(params_sfr, seff, cib_model)
     final_term = djc[:,np.newaxis,:,:] + djsub[:,np.newaxis,:,:] * u[np.newaxis,:,:,:]
     
-    return final_term#, djc, djsub
+    return final_term, djc, djsub
     
 
 ###--START OF C_ell HELPER FUNCTIONS--###
