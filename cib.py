@@ -52,7 +52,7 @@ chi = consts.chi_list.value
 # SED constants
 dgamma = 1.7
 nu_primes = consts.nu_primes
-planck_nu_list = consts.nu_list
+planck_nu_list = consts.nu0
 ghz = consts.ghz
 z_cib_planck = consts.redshifts_M23
 chi_cib = consts.chi_cib
@@ -98,7 +98,7 @@ def cibterm(params, u, cib_model):
     djsub = djsub_dlogMh(params_sfr, seff, cib_model)
     final_term = djc[:,np.newaxis,:,:] + djsub[:,np.newaxis,:,:] * u[np.newaxis,:,:,:]
     
-    return final_term, djc, djsub
+    return final_term#, djc, djsub
     
 
 ###--START OF C_ell HELPER FUNCTIONS--###
@@ -166,9 +166,7 @@ def djc_dlogMh(params_sfr, seff, model):
     # and dividing it by the total halo mass.
     
     prefact = chi**2 * (1 + z)/KC # shape (z,)
-    
     sfrc = SFRc(params_sfr, model) #shape (Mh, z)
-    
     # broadcast properly for multiplication
     sfrc_re = sfrc[np.newaxis, :, :] # shape (1, Mh, z)
     seff_re = seff[:, np.newaxis, :] # shape (nu, 1, z)
@@ -195,7 +193,7 @@ def djsub_dlogMh(params_sfr, seff, model):
     
     prefact = chi**2 * (1 + z)
     prefact = prefact/KC # shape (z,)
-    
+
     # integral in A7 of 2204.05299
     sfrsub = SFRsub(params_sfr, model)
     integrand = sfrsub * np.expand_dims(subhalomf, axis = -1)
@@ -485,7 +483,9 @@ def SFRc(params, model):
         IR_hod_params = (Mmin_IR, IR_sigma_lnM)
         sfr = SFR(etamax, mu_peak0, mu_peakp, 
                   sigma_M0, tau, zc)
-        mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')[:,np.newaxis] #FIXME: only if no z evolution model of N_c
+        #mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')[:,np.newaxis] #FIXME: only if no z evolution model of N_c
+        print("you set meanIR to 1 by hand for testing.")
+        mean_N_IR_c = 1 #FIXME: only to match M21 
         sfrc = sfr * mean_N_IR_c
 
     elif model == 'Y23':
@@ -502,7 +502,7 @@ def SFRc(params, model):
     else:
         print("Not correct model.")
         
-    return sfrc 
+    return sfrc#, mean_N_IR_c
    
 def SFRsub(params, model):
     """
@@ -582,25 +582,13 @@ def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
     Mpeak = mu_peak0 + mu_peakp * z/(1+z)
     Mpeak = 10**Mpeak
     # parametrization based on 2.39 of 2310.10848.
-    
     sigmaM = np.where(M_re < Mpeak, sigma_M0, 
                       sigma_M0 - tau * np.maximum(0, zc - z_re))  # Shape (len(M), len(z))
-    
-    expterm = np.exp(-(np.log(M_re) - np.log(Mpeak))**2/(2 * sigmaM**2))
+    expnumterm = (np.log(M_re) - np.log(Mpeak))**2
+    expterm = np.exp(-expnumterm/(2 * sigmaM**2))
     eta_val = etamax * expterm
-    
-    # sig_z = np.array([max(zc - r, 0.) for r in z])
-    # sigpow = sigma_M0 - tau * sig_z
-    
-    # a = np.zeros((len(Mhc), len(z)))
-    # for i in range(len(Mhc)):
-    #     for j in range(len(z)):
-    #         if Mhc[i] < Meffmax[j]:
-    #             a[i, j] = etamax * np.exp(-(np.log(Mhc[i]) - np.log(Meffmax[j]))**2 / (2 * sigma_M0**2))
-    #         else:
-    #             a[i, j] = etamax * np.exp(-(np.log(Mhc[i]) - np.log(Meffmax[j]))**2 / (2 * sigpow[j]**2))
-    
-    return eta_val #a
+
+    return eta_val
 
 ###--END OF SFR MODELING--###
 

@@ -2,7 +2,8 @@
 Script repurposed from Abhishek Maniyar's DopplerCIB github. 
 
 Author: Tanveer Karim
-Last Updated: 16 Oct 2024
+Last Updated: 12 Dec 2024 (Fixed CIB-CIB bugs; now matches DopplerCIB)
+Updated: 18 Nov 2024 (Added CIB-CIB function)
 """
 
 import numpy as np
@@ -21,6 +22,8 @@ import halo as h
 # cosmology constants
 Hz = consts.Hz_list
 chi = consts.chi_list
+#geo = consts.Hz_over_c_times_chi2.value
+geo = (consts.dchi_dz/consts.chi2).value
 
 # halo constants 
 Mh = consts.Mh_Msol
@@ -44,7 +47,8 @@ dlnpk_dlnk = pc.dlnpk_dlnk
 rad200 = pc.rad200
 concentration = pc.concentration
 concentration_amp = pc.concentration_amp
-w1w2 = pc.w_cibxgal
+wcibwgal = pc.w_cibxgal
+wcibwcib = pc.w_cibxcib
 
 def pcl(theta, M, B):
     """
@@ -90,8 +94,7 @@ def cibgalcross_cell_tot(theta, cib_model,
     cibterm = cib.cibterm(cib_params, uprof, cib_model)
     
     # radial kernal and prefactors 
-    geo = consts.Hz_over_c_times_chi2.value
-    prefact = geo * w1w2
+    prefact = geo * wcibwgal
     
     # expand dims to pass 
     galterm = galterm[np.newaxis,:,:,:] #(nu,k,Mh,z)
@@ -161,45 +164,76 @@ def cibgalcross_pk_2h(galterm, cibterm, plot = False):
             return pk_2h, integral_g, integral_cib
         else:
             return pk_2h
+        
+###--C_CIB,CIB--###
 
-# def cibgalcross_cell_shot():
+def cibcrosscib_cell_2h(cibterm_nu, cibterm_nu_prime):
+    """
+    Returns P_{CIB X CIB'} 2-halo term.
     
-#     """
-#     Returns galaxy X CIB shot-noise. 
-#     """
+    Note that the jnu terms get cancelled out by the ones in W_CIB
     
-#     freq = np.array([100., 143., 217., 353., 545., 857.])
-#     #nfreq = len(self.nu0) #nu_list
-#     nfreq = len(freq)
-#     nl = len(consts.ell) #
-#     shotcib = np.zeros((nfreq, nl))
-#     # 100, 143, 217, 353, 545, 857 Planck
-#     # values for 100 and 143 i.e. 3 and 7 are fake
+    Cell = int dz/c * H(z)/chi^2(z) * W_nu * W_nu' * Plin * integral_nu * integral_nu'
+    integral_nu = integral_nu' = int dlog10Mh * I-term * b(Mh, z) * HMF
     
-#     # read sar file #FIXME: what is this?
-#     strfig = "allcomponents_lognormal_sigevol_1p5zcutoff_nolens_onlyautoshotpar_no3000_gaussian600n857n1200_planck_spire_hmflog10.txt"
-#     cibres = "data/one_halo_bestfit_"+strfig
-#     sar = np.loadtxt(cibres)[4:8, 0]  # 217, 353, 545, 857
+    Args:
+        
+    Returns: 
+        C_ell : of shape (k)
+    """
     
-#     # """
-#     #freq = np.array([100., 143., 217., 353., 545., 857.])
-#     sa = np.array([1.3*0.116689509208305475, 1.3*0.8714424869942087, 14., 357., 2349., 7407.])
-#     sa[2:] = sar
-#     #res = interp1d(freq, sa, kind='linear', bounds_error=False, fill_value="extrapolate")
-#     #shotval = res(self.nu0)
-#     shotval = sa
-#     """
-#     freq = self.nu0
-#     shotval = sar
-#     # """
-#     for i in range(nfreq):
-#         shotcib[i, :] = shotval[i]
-#     # if max(self.nu0) > max(freq):
-#     #     print ("shot noise values for frequencies higher than 857 GHz extrapolated using the values for Planck")
-
-#     r_l = 1.0 # FIXME: line 333 of run_driver ?
-#     shotgal = dict_gal['shot_noise']*np.ones_like(consts.ell)
-#     crossshot = r_l*np.sqrt(shotcib*shotgal)
-#     return crossshot
-
-# shotnoise = cibgalcross_cell_shot() # calculate once to pass to cibgalcross_cell_tot
+    prefact = geo * wcibwcib
+    
+    # integrals
+    integrand_nu = cibterm_nu * hmfzTXbias 
+    integral_nu = simpson(y=integrand_nu, dx=dm, axis=1) #(k,Mh,z)
+    
+    integrand_nu_prime = cibterm_nu_prime * hmfzTXbias 
+    integral_nu_prime = simpson(y=integrand_nu_prime, dx=dm, axis=1) #(k,Mh,z)
+    
+    #(k,z)
+    cell_integrand = prefact * Pk_lin * integral_nu * integral_nu_prime
+    cell_integrand[:,:,0] = 0 # set z = 0 to 0 to not encounter nan
+    C_ell = simpson(cell_integrand, x = consts.Plin['z'], axis=2)
+    
+    return C_ell
+    
+def cibcrosscib_cell_1h(djc_nu, djc_nu_prime, djsub_nu, djsub_nu_prime,
+                        uprof):
+    """
+    Returns P_{CIB X CIB'} 1-halo term.
+    
+    Note that the jnu terms get cancelled out by the ones in W_CIB
+    
+    Cell = int dz/chi^2 * dchi/dz * W_nu * W_nu' * int(t1+t2+t3)*HMF*dlogMh
+    t1 = djc_nu * djsub_nu' * unfw
+    t2 = djc_nu' * djsub_nu * unfw
+    t3 = djsub_nu * djsub_nu' * unfw^2 
+    
+    Args:
+        djc_nu, djc_nu_prime : central emissivity (Mh,z)
+        djsub_nu, djsub_nu_prime : sat emissivity (Mh,z)
+        uprof : Fourier halo profile (ell,Mh,z)
+    Returns: 
+        C_ell : of shape (ell = k)
+    """
+    
+    prefact = geo * wcibwcib
+    # extend dimensions to match with uprof
+    djc_nu_re = djc_nu[np.newaxis,:,:]
+    djc_nu_prime_re = djc_nu_prime[np.newaxis,:,:]
+    djsub_nu_re = djsub_nu[np.newaxis,:,:]
+    djsub_nu_prime_re = djsub_nu_prime[np.newaxis,:,:]
+    
+    integrand1 = djc_nu_re * djsub_nu_prime_re * uprof
+    integrand2 = djc_nu_prime_re * djsub_nu_re * uprof 
+    integrand3 = djsub_nu_re * djsub_nu_prime_re * uprof**2 
+    integrand_tot = (integrand1 + integrand2 + integrand3) * hmfzT[0]#[:,:,1:]
+    integral = simpson(y=integrand_tot, dx=dm, axis=1)
+    
+    if consts.Plin['z'][0] == 0:
+        C_ell_1h = simpson(y=integral*prefact[1:],
+                           x=consts.Plin['z'][1:],
+                           axis = 1)
+    
+    return C_ell_1h

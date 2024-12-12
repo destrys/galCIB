@@ -39,8 +39,8 @@ def uprof_mixed(prof_params, rad200, c, c_term,
     
     fexp, tau, lambda_NFW = prof_params
     
-    nfw_term, rs_original = nfwfourier_u(lambda_NFW, rad200, c, c_term)
-    exp_term = expfourier_u(tau=tau, rs = rs_original)
+    nfw_term = nfwfourier_u(lambda_NFW, rad200, c, c_term)
+    exp_term = expfourier_u(tau=tau, rs = rad200)
     
     res = fexp * exp_term + (1-fexp) * nfw_term
     
@@ -81,15 +81,18 @@ def nfwfourier_u(lambda_NFW, rad200, c, c_term):
         lambda_NFW : rescaling factor of rs
     """
     
-    rs_original = rad200 # (Mh, z)
-    rs_rescaled = rs_original/lambda_NFW
+    #rs_original = rad200 # (Mh, z)
+    rs_original = r_star(rad200, c)
+    rs_rescaled = r_star(rad200/lambda_NFW, c) #FIXME: does concentration change with rescaling?
     #c = nu_to_c200c(rad, dlnpk_dlnk) # (Mh, z)
     #c_term = ampl_nfw(c) # (Mh, z)
+    #FIXME: calculate q a priori and just divide by lambda to get q_rescaled
     q = kk[:, np.newaxis, :] * rs_rescaled[np.newaxis,:,:] # (k, Mh, z)
     
     # broadcast to match q
-    c = np.expand_dims(c, axis = 0) 
+    c = np.expand_dims(c, axis = 0) #FIXME: calculate c*q and only divide by lambda to get c*q rescaled
     c_term = np.expand_dims(c_term, axis = 0) 
+    tst = q + c*q
     
     Si_qcq, Ci_qcq = sine_cosine_int(q + c*q) # (k, Mh, z)
     Si_q, Ci_q = sine_cosine_int(q) # (k, Mh, z)
@@ -100,7 +103,7 @@ def nfwfourier_u(lambda_NFW, rad200, c, c_term):
     
     unfw = c_term *(cos_q_term + sin_q_term - sin_qc_term) # (k, Mh, z)
     
-    return unfw, rs_original
+    return unfw
 
 def ampl_nfw(c):
     """
@@ -121,7 +124,7 @@ def sine_cosine_int(x):
     si, ci = ss.sici(x)
     return si, ci
 
-def r_star(rad, dlnpk_dlnk):
+def r_star(r200, c_200c):#, dlnpk_dlnk):
     """
     Characteristic radius also called r_s in other literature.
     Physically refers to the transition point where the halo
@@ -134,8 +137,8 @@ def r_star(rad, dlnpk_dlnk):
         res : (Mh, z)
     """
     
-    c_200c = nu_to_c200c(rad, dlnpk_dlnk) # (Mh, z)
-    r200 = r_delta(delta_h=200) # (Mh, z)
+    #c_200c = nu_to_c200c(rad, dlnpk_dlnk) # (Mh, z)
+    #r200 = r_delta(delta_h=200) # (Mh, z)
     res = r200/c_200c  
     
     return res
@@ -270,6 +273,37 @@ def ampl_nfw(c):
     a = 1. /(np.log(1.+c) - c/(1.+c))
     return a
 
+# def get_dlnpk_dlnk():
+#     """
+#     When the power spectrum is obtained from CAMB, slope of the ps wrt k
+#     shows wiggles at lower k which corresponds to the BAO features. Also
+#     at high k, there's a small dip in the slope of the ps which is due to
+#     the effect of the baryons (this is not very important for the current
+#     calculations though). We are using the analysis from the paper
+#     https://arxiv.org/pdf/1407.4730.pdf where they have used the power
+#     spectrum from Eisenstein and Hu 1998 formalism where these effects have
+#     been negelected and therefore they don't have the wiggles and the bump.
+#     In order to acheive this, we have to smooth out the
+#     slope of the ps at lower k. But we have checked that the results
+#     do not vary significantly with the bump.
+    
+#     Returns:
+#         res : (Mh, z)
+#     """
+    
+#     grad = np.zeros_like(power) # shape (k, z)
+#     grad[:,:-1] = np.diff(np.log(power)) / np.diff(np.log(kk))
+#     #FIXME: is this not just copying the last value again? 
+#     grad[:,-1] = (np.log(power[:,-1]) - np.log(power[:,-2]))/(np.log(kk[:,-1]) - np.log(kk[:,-2]))
+#     kr = consts.k_R # (Mh,)
+    
+#     res = np.zeros((len(kr), power.shape[1])) # shape(Mh, z)
+    
+#     for i in range(power.shape[1]):
+#         res[:,i] = np.interp(kr, kk[:,i], grad[:,i]) # loop over per redshift
+    
+#     return res
+
 def get_dlnpk_dlnk():
     """
     When the power spectrum is obtained from CAMB, slope of the ps wrt k
@@ -289,16 +323,14 @@ def get_dlnpk_dlnk():
     """
     
     grad = np.zeros_like(power) # shape (k, z)
-    grad[:,:-1] = np.diff(np.log(power)) / np.diff(np.log(kk))
-    
+    grad[:-1,:] = np.diff(np.log(power),axis=0) / np.diff(np.log(kk),axis=0)
     #FIXME: is this not just copying the last value again? 
-    grad[:,-1] = (np.log(power[:,-1]) - np.log(power[:,-2]))/(np.log(kk[:,-1]) - np.log(kk[:,-2]))
+    grad[-1,:] = (np.log(power[-1,:]) - np.log(power[-2,:]))/(np.log(kk[-1,:]) - np.log(kk[-2,:]))
     kr = consts.k_R # (Mh,)
     
     res = np.zeros((len(kr), power.shape[1])) # shape(Mh, z)
-    
-    for i in range(power.shape[1]):
-        res[:,i] = np.interp(kr, kk[:,i], grad[:,i]) # loop over per redshift
+    for i in range(power.shape[1]): # loop over redshift
+        res[:,i] = np.interp(kr, kk[:,i], grad[:,i])
     
     return res
 

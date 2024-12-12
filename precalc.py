@@ -35,6 +35,8 @@ w_mu[0] = 0
 w_gal_tot = w_gal + w_mu
 w_cibxgal = w_gal_tot * w_cib
 w_cibxgal[0] = 0 # since no value there
+w_cibxcib = w_cib**2
+w_cibxcib[0] = 0 # since no value there
 
 ##--BIAS MODEL--##
 nu200 = h.nu_delta(rad200) # calculate peak height (Mh, z)

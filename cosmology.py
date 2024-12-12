@@ -19,7 +19,7 @@ z_all = np.insert(np.arange(0.05, 10.22, 0.1), 0, 0.)
 
 # k range covering up to k_max = 10
 k_all = np.logspace(-4, 1, 500)
-print(k_all)
+
 ##--CAMB--##
 pars = camb.set_params(H0=planck.H0.value, 
                        ombh2=planck.Ob0 * planck.h**2, 
@@ -37,7 +37,7 @@ pars.NonLinear = camb_model.NonLinear_none
 results = camb.get_results(pars)
 
 # Linear P_mm interpolator for z_all and k_all grid
-# in units of little h
+# in units of little h 
 PK = results.get_matter_power_interpolator(nonlinear=False, 
                                            hubble_units=False, 
                                            k_hunit=False)
@@ -64,7 +64,10 @@ colossus_planck_cosmo = cc.fromAstropy(astropy_cosmo = planck,
 
 # set halo mass bins
 # range from 10e7 to 10e15 to cover almost all CIB galaxies 
-Mh_Msol_h = np.logspace(7, 15, 100) # in units of little h
+#FIXME: make sure that the range is 7,15 in units of NOT little h
+#Mh_Msol_h = np.logspace(7, 15, 100) # in units of little h
+Mh_Msol = np.logspace(7, 15, 100)
+Mh_Msol_h = Mh_Msol * planck.h 
 
 cc.setCurrent(colossus_planck_cosmo) # set cosmology defn
 
@@ -78,7 +81,7 @@ for i in range(len(z_all)):
                            mdef = '200m',
                            model = 'tinker08',
                            q_in = 'M',
-                           q_out = 'dndlnM') * np.log(10) 
+                           q_out = 'dndlnM') * np.log(10) * planck.h  #FIXME: in Abhi's code, Anthony multiply with h^3, also compare with 218 and 219 in hmf_unfw_bias.py
 
     
 if SAVE:
