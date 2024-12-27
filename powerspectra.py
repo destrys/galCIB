@@ -22,7 +22,6 @@ import halo as h
 # cosmology constants
 Hz = consts.Hz_list
 chi = consts.chi_list
-#geo = consts.Hz_over_c_times_chi2.value
 geo = (consts.dchi_dz/consts.chi2).value
 
 # halo constants 
@@ -35,12 +34,9 @@ biasmz = pc.halo_biases
 hmfzTXbias = hmfzT * biasmz
 
 # expand 
-hmfzT = hmfzT[np.newaxis,np.newaxis,:,:]
+hmfzT = hmfzT[np.newaxis,:,:]
 biasmz = biasmz[np.newaxis,np.newaxis,:,:]
 Pk_lin = consts.Pk_array_over_ell[np.newaxis,:,:]
-
-# survey parameters
-#dict_gal = consts.dict_gal['ELG']
 
 # precalc values
 dlnpk_dlnk = pc.dlnpk_dlnk
@@ -49,8 +45,15 @@ concentration = pc.concentration
 concentration_amp = pc.concentration_amp
 wcibwgal = pc.w_cibxgal
 wcibwcib = pc.w_cibxcib
+wgalwgal = pc.w_galxgal/(consts.dchi_dz**2).value
+z_all = consts.Plin['z']
 
-def pcl(theta, M, B):
+# geometric prefactor
+prefact_gg = geo * wgalwgal
+prefact_gcib = geo * wcibwgal
+prefact_cibcib = geo * wcibwcib
+
+def pcl_binned(theta, M, B):
     """
     Returns pseudo-C_ell.
     
@@ -72,47 +75,76 @@ def pcl(theta, M, B):
     pcl_combined = np.concatenate(pcl_gg_binned, pcl_gcib_binned) #FIXME: make sure gcib order is correct
     return pcl_combined
 
-def cibgalcross_cell_tot(theta, cib_model,
-                         plot=False): 
+def c_all(theta, cib_model):
+    """
+    Returns C_gg, C_gCIB, C_CIBCIB.
+    
+    Args:
+
+    Returns:
+        c_all_combined : vectors of 10 power spectra vectors
+                        [C_gg,
+                         C_gx353, C_gx545, C_gx857,
+                         C_353x353, C_545x545, C_857x857,
+                         C_353x545, C_353x857, C_545x857,
+                        ]
+    """
+    
+    # parameters 
+    hmalpha = theta[:10] # gg, gx{CIB}, {CIB_low X CIB_high}
+    hmalpha_gg = hmalpha[0] # pass to galcrossgal
+    hmalpha_gcib = hmalpha[1:4] # pass to galcrosscib
+    hmalpha_cibcib = hmalpha[4:] # pass to cibcrosscib
+    
+    shotnoise = theta[10:19] # gx{CIB}, {CIB_low X CIB_high}
+    shotnoise_gcib = shotnoise[:3]
+    shotnoise_cibcib = shotnoise[3:]
+    
+    gal_params = theta[19:27] # Ncen (4): gamma, log10Mc, sigmaM, Ac
+                           # Nsat (4): As, M0, M1, alpha
+    prof_params = theta[27:30] # fexp, tau, lambda_NFW
+    cib_params = theta[30:] # SFR (6): etamax (only for M23) or L0 (only for Y23), mu_peak0, mu_peakp, sigma_M0, tau, zc
+                       # SED (3): beta, T0, alpha (only for Y23)
+    
+    # uprof
+    uprof = h.uprof_mixed(prof_params, rad200, concentration, 
+                         concentration_amp) # (k, Mh, z)
+    
+    # galterm, cibterm, nbar_halo
+    galterm, Nc, Nsat = gal.galterm(gal_params, uprof, 
+                                    gal_type = 'ELG')
+    cibterm, djc, djsub = cib.cibterm(cib_params, uprof, cib_model)
+    nbar_halo = gal.nbargal_halo(Nc, Nsat, hmfzT)
+    
+    c_gg = galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, Nc)
+    c_gcib = cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise_gcib)
+    c_cibcib = cibcrosscib_cell_tot(hmalpha_cibcib, uprof, cibterm,
+                                    djc, djsub, shotnoise_cibcib)
+    
+    ## FIXME: add color correction
+    
+    c_all_combined = np.hstack((c_gg, c_gcib, c_cibcib))
+    
+    return c_all_combined
+
+def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise): 
     """
     Returns C_{g, CIB} accounting for all halo terms.
     """
     
-    hmalpha = theta[0]
-    shotnoise = theta[1]
-    gal_params = theta[2:10] # Ncen (4): gamma, log10Mc, sigmaM, Ac
-                           # Nsat (4): As, M0, M1, alpha
-    prof_params = theta[10:13] # fexp, tau, lambda_NFW
-    cib_params = theta[13:] # SFR (6): etamax (only for M23) or L0 (only for Y23), mu_peak0, mu_peakp, sigma_M0, tau, zc
-                       # SED (3): beta, T0, alpha (only for Y23)
-    uprof = h.uprof_mixed(prof_params, 
-                         rad200, 
-                         concentration, 
-                         concentration_amp) # (k, Mh, z)
-    galterm = gal.galterm(gal_params, uprof, 
-                          gal_type = 'ELG')
-    cibterm = cib.cibterm(cib_params, uprof, cib_model)
-    
-    # radial kernal and prefactors 
-    prefact = geo * wcibwgal
-    
-    # expand dims to pass 
-    galterm = galterm[np.newaxis,:,:,:] #(nu,k,Mh,z)
-    cibterm = cibterm[3:]
-        
     # calculate Pk of both halo terms
     oneh = cibgalcross_pk_1h(galterm, cibterm)
     twoh = cibgalcross_pk_2h(galterm, cibterm)
     
-    pk_oneh_plus_2h = prefact * (oneh**(1/hmalpha) + twoh**(1/hmalpha))**hmalpha
-    pk_oneh_plus_2h[:,:,0] = 0 # z = 0 is 0, otherwise integral gets NaN
-    c_ell_1h_plus_2h = simpson(pk_oneh_plus_2h, x = consts.Plin['z'], axis=2)
-    tot = c_ell_1h_plus_2h+shotnoise
+    #FIXME: LOOP OVER hmalpha_gcib
+    hmalpha_gcib = hmalpha_gcib[:,np.newaxis,np.newaxis] # (nu, k, z)
     
-    if plot: # for plotting purposes
-        return tot, prefact*oneh, prefact*twoh
-    else:
-        return tot 
+    pk_oneh_plus_2h = (oneh**hmalpha_gcib + twoh**hmalpha_gcib)**(1/hmalpha_gcib)
+    c_ell_1h_plus_2h = simpson(prefact_gcib * pk_oneh_plus_2h, x = z_all, 
+                               axis=2)
+    tot = c_ell_1h_plus_2h + shotnoise[:,np.newaxis] # (nu, ell)
+    
+    return tot
 
 def cibgalcross_pk_1h(galterm, cibterm):
         """
@@ -164,10 +196,140 @@ def cibgalcross_pk_2h(galterm, cibterm, plot = False):
             return pk_2h, integral_g, integral_cib
         else:
             return pk_2h
-        
-###--C_CIB,CIB--###
 
-def cibcrosscib_cell_2h(cibterm_nu, cibterm_nu_prime):
+###--C_gal,gal---###
+
+def galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, 
+                         Nc):
+    """
+    Returns C_gg total based on Pk.
+    
+    NOTE: it does not contain gg shot noise.
+    """
+    
+    p2h = galcrossgal_pk_2h(galterm, nbar_halo)
+    p1h = galcrossgal_pk_1h(galterm, nbar_halo, Nc)
+    
+    p_tot = (p2h**hmalpha_gg + p1h**hmalpha_gg)**(1/hmalpha_gg)
+    
+    integrand = prefact_gg * p_tot
+    c_ell = simpson(integrand, x=z_all, axis=-1)
+    
+    return c_ell
+    
+def galcrossgal_pk_2h(galterm, nbar_halo):
+    """
+    Returns the 2-halo term of the 3D Pk. 
+    
+    Based on A11 of 2204.05299.
+    
+    P2h = Plin * integrand^2
+    integrand = HMF * (Nc+Ns*u) * b * dlogMh
+    """
+    
+    integrand = (galterm * hmfzTXbias[np.newaxis,:,:])/nbar_halo
+    integral = simpson(integrand,dx=dm,axis=1)
+    p2h = Pk_lin * integral**2
+    
+    return p2h
+    
+def galcrossgal_pk_1h(galterm, nbar_halo, ncen):
+    """
+    Returns the 2-halo term of the 3D Pk. 
+    
+    Based on A10 of 2204.05299.
+    
+    P1h = int HMF * (2*Nc*Ns*u + Ns^2u^2) dlogMh
+    
+    Note integrand can be written as: 
+    (Nc + Ns*u)^2 - Nc^2.
+    = galterm^2 - Nc^2 Saves calculation time
+    
+    Args:
+        ncen : num. of centrals as a function of Mh (Mh,)
+        galterm : (Nc + Ns*u) (k,Mh,z)
+    """    
+    
+    Nc = ncen[np.newaxis,:,np.newaxis]
+    #nbar_halo = gal.nbargal_halo(ncen, nsat, hmfzT[0])
+    
+    integrand = galterm**2 - Nc**2
+    integrand = integrand * hmfzT/nbar_halo**2
+    
+    p1h = simpson(integrand,dx=dm,axis=1)
+    
+    return p1h
+    
+def galcrossgal_cell_2h(ncen, nsat, galterm):
+    """
+    Returns the 2-halo term of C_gg.
+    """
+    
+    p2h = galcrossgal_pk_2h(ncen, nsat, galterm)[0]
+    integrand = geo * wgalwgal * p2h
+    
+    c_2h = simpson(integrand,x=consts.Plin['z'],axis=-1)
+    
+    return c_2h
+    
+def galcrossgal_cell_1h(ncen, nsat, galterm):
+    """
+    Returns the 1-halo term of C_gg
+    """
+    
+    p1h = galcrossgal_pk_1h(ncen,nsat,galterm)
+    integrand = geo * wgalwgal * p1h
+    
+    c_1h = simpson(integrand,x=consts.Plin['z'],axis=-1)
+    
+    return c_1h, geo * wgalwgal
+    
+###--C_CIB,CIB--###
+#FIXME: color correction
+
+def cibcrosscib_cell_tot(hmalpha_cibcib, cibterm, 
+                         djc, djsub, uprof, 
+                         shotnoise):
+    """
+    Returns the total CIB X CIB for all the nus.
+    
+    Args:
+        hmalpha_cibcib : 3D power spectra relaxation parameter, 
+            (nu, nu', 1, 1) where the last two axes correspond to k and z.
+            Note that the matrix must be symmetric because Pk is invariant under
+            nu <-> nu' transformation.
+        cibterm : emissivity term (djc + djsub * uprof) (nu,Mh,z)
+        djc : central emissivity term (nu,Mh,z)
+        djsub: satellite emissivity term (nu,Mh,z)
+        uprof : Fourier transform of the sat. radial prof (k,Mh,z)
+        shotnoise : Pedestal shotnoise value of CIB-emitting galaxies,
+            (nu,nu',1) where last axis corresponds to ell. 
+            Note that the matrix must be symmetric because Pk is invariant under
+            nu <-> nu' transformation.
+        
+    Returns:
+        c_ell : of shape (nu, nu', ell)
+    """
+    
+    nnu = 6 # number of frequencies
+    
+    # store C_ell
+    c_ell = np.zeros((nnu, nnu, len(consts.ell)))
+                
+    # calculate 3D power spectra
+    p2h = cibcrosscib_pk_2h(cibterm)    
+    p1h = cibcrosscib_pk_1h(djc, djsub, uprof)
+    ptot = (p1h**hmalpha_cibcib + p2h**hmalpha_cibcib)**(1/hmalpha_cibcib)
+    
+    # calculate C_ell
+    integrand = prefact_cibcib * ptot 
+    c_ell = simpson(integrand, x=z_all, axis=-1) # over z
+    
+    # add shot noise
+    c_ell = c_ell + shotnoise 
+    return c_ell
+            
+def cibcrosscib_pk_2h(cibterm):
     """
     Returns P_{CIB X CIB'} 2-halo term.
     
@@ -179,33 +341,27 @@ def cibcrosscib_cell_2h(cibterm_nu, cibterm_nu_prime):
     Args:
         
     Returns: 
-        C_ell : of shape (k)
+        P_CIBXCIB : of shape (k,z)
     """
     
-    prefact = geo * wcibwcib
-    
     # integrals
-    integrand_nu = cibterm_nu * hmfzTXbias 
-    integral_nu = simpson(y=integrand_nu, dx=dm, axis=1) #(k,Mh,z)
+    integrand = cibterm * hmfzTXbias 
+    integral = simpson(y=integrand, dx=dm, axis=2) #(nu, k,z)
     
-    integrand_nu_prime = cibterm_nu_prime * hmfzTXbias 
-    integral_nu_prime = simpson(y=integrand_nu_prime, dx=dm, axis=1) #(k,Mh,z)
+    # Pairwise products of integrals for unique combinations (nu_i, nu_j)
+    pk2h_all = np.einsum('ikz,jkz->ijkz', integral, integral)  # Shape (nu, nu, k, z)
+
+    pk2h_all = Pk_lin * pk2h_all 
     
-    #(k,z)
-    cell_integrand = prefact * Pk_lin * integral_nu * integral_nu_prime
-    cell_integrand[:,:,0] = 0 # set z = 0 to 0 to not encounter nan
-    C_ell = simpson(cell_integrand, x = consts.Plin['z'], axis=2)
+    return pk2h_all
     
-    return C_ell
-    
-def cibcrosscib_cell_1h(djc_nu, djc_nu_prime, djsub_nu, djsub_nu_prime,
-                        uprof):
+def cibcrosscib_pk_1h(djc, djsub, uprof):
     """
     Returns P_{CIB X CIB'} 1-halo term.
     
     Note that the jnu terms get cancelled out by the ones in W_CIB
     
-    Cell = int dz/chi^2 * dchi/dz * W_nu * W_nu' * int(t1+t2+t3)*HMF*dlogMh
+    pk1h = int(t1+t2+t3)*HMF*dlogMh
     t1 = djc_nu * djsub_nu' * unfw
     t2 = djc_nu' * djsub_nu * unfw
     t3 = djsub_nu * djsub_nu' * unfw^2 
@@ -215,25 +371,26 @@ def cibcrosscib_cell_1h(djc_nu, djc_nu_prime, djsub_nu, djsub_nu_prime,
         djsub_nu, djsub_nu_prime : sat emissivity (Mh,z)
         uprof : Fourier halo profile (ell,Mh,z)
     Returns: 
-        C_ell : of shape (ell = k)
+        pk1h : of shape (k,z)
     """
     
-    prefact = geo * wcibwcib
     # extend dimensions to match with uprof
-    djc_nu_re = djc_nu[np.newaxis,:,:]
-    djc_nu_prime_re = djc_nu_prime[np.newaxis,:,:]
-    djsub_nu_re = djsub_nu[np.newaxis,:,:]
-    djsub_nu_prime_re = djsub_nu_prime[np.newaxis,:,:]
     
-    integrand1 = djc_nu_re * djsub_nu_prime_re * uprof
-    integrand2 = djc_nu_prime_re * djsub_nu_re * uprof 
-    integrand3 = djsub_nu_re * djsub_nu_prime_re * uprof**2 
-    integrand_tot = (integrand1 + integrand2 + integrand3) * hmfzT[0][:,:,1:]
-    integral = simpson(y=integrand_tot, dx=dm, axis=1)
+    djc_re = djc[:,np.newaxis,:,:]
+    djsub_re = djsub[:,np.newaxis,:,:]
     
-    if consts.Plin['z'][0] == 0:
-        C_ell_1h = simpson(y=integral*prefact[1:],
-                           x=consts.Plin['z'][1:],
-                           axis = 1)
+    pk1h = np.zeros((djc.shape[0],djc.shape[0],
+                     uprof.shape[0], djc.shape[-1])) # (nu,nu,k,z)
     
-    return C_ell_1h
+    for nu1 in range(djc.shape[0]): # loop over nu
+        for nu2 in range(djc.shape[0]): # loop over nu'
+            t1 = djc_re[nu1]*djsub_re[nu2]*uprof
+            t2 = djc_re[nu2]*djsub_re[nu1]*uprof
+            t3 = djsub_re[nu1]*djsub_re[nu2]*uprof**2
+            
+            integrand = t1 + t2 + t3
+            
+            pk1h[nu1,nu2] = simpson(integrand * hmfzT, 
+                                    dx=dm,axis=1)
+        
+    return pk1h
