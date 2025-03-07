@@ -15,10 +15,20 @@ from colossus.cosmology import cosmology as cc
 from colossus.lss import mass_function
 
 # Redshift range covering both ELG and CIB in bins of ELG
-z_all = np.insert(np.arange(0.05, 10.22, 0.1), 0, 0.)
+#z_all = np.arange(0.05, 10.22, 0.1)
+
+#FIXME: run it only for comparison with DopplerCIB
+z_all = np.loadtxt('/Users/tkarim/Documents/research/DopplerCIB/data_files/redshifts.txt')
+print(z_all.shape)
 
 # k range covering up to k_max = 10
 k_all = np.logspace(-4, 1, 500)
+
+# set some parameters that are not defined in astropy
+ns = 0.9665
+tau = 0.0561
+As = np.exp(3.047)/10**10
+
 
 ##--CAMB--##
 pars = camb.set_params(H0=planck.H0.value, 
@@ -27,10 +37,10 @@ pars = camb.set_params(H0=planck.H0.value,
                        mnu=planck.m_nu.value[-1], 
                        num_nu_massive = (planck.m_nu.value > 0).sum(),
                        omk=planck.Ok0, 
-                       tau=0.0543, As=np.exp(3.0448)/10**10, ns=0.96605, #Plik best fit Planck 2018 Table 1 left-most col 1807.06209
+                       tau=tau, As=As, ns=ns, #Plik best fit Planck 2018 Table 2 left-most col 1807.06209
                        halofit_version='mead', lmax=2000)
 
-pars.set_matter_power(redshifts = z_all, kmax=10.0)
+pars.set_matter_power(redshifts=z_all, kmax=10.0)
 
 # Linear spectra
 pars.NonLinear = camb_model.NonLinear_none
@@ -53,14 +63,16 @@ if SAVE:
     plin_dict['k'] = k_all
     plin_dict['pk'] = PKgrid
 
-    with open('data/plin_unit_Mpc.p', 'wb') as handle:
+    with open('data/plin_unit_Mpc_DopplerCIB.p', 'wb') as handle:
         pickle.dump(plin_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 ##--colossus--##
-colossus_planck_cosmo = cc.fromAstropy(astropy_cosmo = planck, 
-                      sigma8 = 0.809, # based on CAMB using the As 
-                      ns = 0.96605, 
-                      cosmo_name = 'planck_baseline')
+# colossus_planck_cosmo = cc.fromAstropy(astropy_cosmo = planck, 
+#                       sigma8 = , # based on CAMB using the As #FIXME: need to recalculate based on new estimations
+#                       ns = ns, 
+#                       cosmo_name = 'planck_baseline')
+
+colossus_planck_cosmo = cc.setCosmology('planck18')
 
 # set halo mass bins
 # range from 10e7 to 10e15 to cover almost all CIB galaxies 
@@ -81,7 +93,7 @@ for i in range(len(z_all)):
                            mdef = '200m',
                            model = 'tinker08',
                            q_in = 'M',
-                           q_out = 'dndlnM') * np.log(10) * planck.h  #FIXME: in Abhi's code, Anthony multiply with h^3, also compare with 218 and 219 in hmf_unfw_bias.py
+                           q_out = 'dndlnM') * np.log(10) * planck.h**3  #FIXME: in Abhi's code, Anthony multiply with h^3, also compare with 218 and 219 in hmf_unfw_bias.py
 
     
 if SAVE:
@@ -91,6 +103,6 @@ if SAVE:
     hmfz_dict['M_Msol_h'] = Mh_Msol_h
     hmfz_dict['hmfz_log10M'] = hmfz
     
-    with open('data/hmfz_h.p', 'wb') as handle:
+    with open('data/hmfz_h_DopplerCIB.p', 'wb') as handle:
         pickle.dump(hmfz_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
         

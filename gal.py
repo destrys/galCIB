@@ -17,6 +17,7 @@ OmegaM0 = consts.OmegaM0
 # read in halo constants
 Mh = consts.Mh_Msol
 log10Mh = consts.log10Mh
+dm = consts.log10Mh[1] - consts.log10Mh[0]
 
 # read in survey information
 z = consts.Plin['z']
@@ -176,9 +177,29 @@ def get_Wgal(dict_gal):
     pz = dict_gal['pz']
     
     return pz
-    
 
-def galterm(params, u, gal_type = 'ELG'): #FIXME: needs testing
+
+def nbargal_halo(ncen, nsat, hmf):
+    """
+    Returns the expected galaxy count per z-bin based 
+    on the galaxy halo model. 
+    
+    Args:
+        ncen : number of centrals (Mh,)
+        nsat : number of sat (Mh,)
+        hmf : halo mass function (k, Mh, z)
+    Returns:
+    """
+    
+    Ntot = ncen + nsat # total number of galaxies predicted by the halo model
+    Ntot = Ntot[np.newaxis,:,np.newaxis]
+    integrand = Ntot * hmf
+    
+    nbar = simpson(integrand, dx=dm, axis=1)
+    
+    return nbar
+    
+def galterm(params, u, gal_type = 'ELG'):
     """
     Returns the second bracket in A13 of 2204.05299.
     Form is (Nc + Ns * u(k, Mh, z)).
@@ -206,4 +227,4 @@ def galterm(params, u, gal_type = 'ELG'): #FIXME: needs testing
     
     res = Nc[np.newaxis, :, np.newaxis] + Ns[np.newaxis, :, np.newaxis] * u
     
-    return res 
+    return res, Nc, Ns

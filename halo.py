@@ -14,9 +14,7 @@ import consts
 import cosmology
 
 # import halo consts
-Mh = consts.Mhc_Msol
-#kk = consts.Plin['k'] #FIXME: make sure what the unit of k is, if k/h or k
-#power = consts.Plin['pk'] #FIXME: make sure what the unit of Pk is
+Mh = consts.Mhc_Msol #FIXME: make sure passing the correct form, Mhc or Mh
 kk = consts.k_grid_over_ell # (k, z)
 power = consts.Pk_array_over_ell # (z, k)
 
@@ -176,6 +174,30 @@ def nu_to_c200c(rad, dlnpk_dlnk):  # length of mass array
     
     return res
 
+def mass_to_radius():
+    """
+    Lagrangian radius of a dark matter halo
+    """
+    
+    rho_mean = consts.mean_density0
+    r3 = 3*Mh/(4*np.pi*rho_mean)
+    return r3**(1./3.)
+
+def nu():
+    """
+    Calculate the peak heights: nu, we use the
+    simple Lagrangian radius calculated using mass_to_radius function.
+    
+    Returns:
+        nu : (Mh, z)
+    """
+    
+    rad = mass_to_radius()
+    delta_c = 1.686  # critical density of the universe. Redshift evolution
+    # is small and neglected
+    sig = sigma(rad)
+    return delta_c/sig  # length of mass array
+    
 # DONE
 def nu_delta(rad):  # peak heights
     
@@ -209,15 +231,19 @@ def sigma(rad):
         res: Variance at size of radius rad shape (Mh, z)
     """
 
-    #rk = rad[:,:,np.newaxis] * kk[np.newaxis,np.newaxis,:] # shape (Mh, z, kk)
-    rk = rad[np.newaxis,:,:] * kk[:,np.newaxis,:] # (k, Mh, z)
-    rest = power * kk**3 # shape (k, z)
+    # need the full Pk to get the proper numerical integration 
+    kk_full = consts.Plin['k'] # (k,)
+    pk_full = consts.Plin['pk'].T #(k,z)
     
-    lnk = np.log(kk) # shape (k,z)
-    #integ = rest*W(rk)**2 # shape (Mh, z, kk)
+    if(rad.ndim == 1):
+        rk = rad[np.newaxis,:,np.newaxis] * kk_full[:,np.newaxis,np.newaxis] # (k, Mh, z)
+    else:
+        rk = rad[np.newaxis,:,:] * kk_full[:,np.newaxis,np.newaxis] # (k, Mh, z)
+    rest = pk_full * kk_full[:,np.newaxis]**3 # shape (k, z)
+    lnk = np.log(kk_full) # shape (k,)
     Wrk = W(rk) # (k, Mh, z)
     integ = rest[:,np.newaxis,:] * Wrk**2 #(k,Mh,z)
-    sigm = (0.5/np.pi**2) * simpson(integ, x=lnk[:,np.newaxis,:],
+    sigm = (0.5/np.pi**2) * simpson(integ, x=lnk[:,np.newaxis,np.newaxis],
                                     axis=0) # integrating along kk
     res = np.sqrt(sigm)
 
@@ -251,7 +277,7 @@ def r_delta(delta_h = 200):
         res : shape (Mh, z) in units of Mpc^3
     """
 
-    r3 = 3*consts.Mhc_Msol[:,np.newaxis]/(4*np.pi*delta_h*consts.rho_crit[np.newaxis,:]) # units of Mpc^3
+    r3 = 3*consts.Mh_Msol[:,np.newaxis]/(4*np.pi*delta_h*consts.rho_crit[np.newaxis,:]) # units of Mpc^3
     
     res = r3**(1./3.)
     return res
@@ -272,37 +298,6 @@ def ampl_nfw(c):
     
     a = 1. /(np.log(1.+c) - c/(1.+c))
     return a
-
-# def get_dlnpk_dlnk():
-#     """
-#     When the power spectrum is obtained from CAMB, slope of the ps wrt k
-#     shows wiggles at lower k which corresponds to the BAO features. Also
-#     at high k, there's a small dip in the slope of the ps which is due to
-#     the effect of the baryons (this is not very important for the current
-#     calculations though). We are using the analysis from the paper
-#     https://arxiv.org/pdf/1407.4730.pdf where they have used the power
-#     spectrum from Eisenstein and Hu 1998 formalism where these effects have
-#     been negelected and therefore they don't have the wiggles and the bump.
-#     In order to acheive this, we have to smooth out the
-#     slope of the ps at lower k. But we have checked that the results
-#     do not vary significantly with the bump.
-    
-#     Returns:
-#         res : (Mh, z)
-#     """
-    
-#     grad = np.zeros_like(power) # shape (k, z)
-#     grad[:,:-1] = np.diff(np.log(power)) / np.diff(np.log(kk))
-#     #FIXME: is this not just copying the last value again? 
-#     grad[:,-1] = (np.log(power[:,-1]) - np.log(power[:,-2]))/(np.log(kk[:,-1]) - np.log(kk[:,-2]))
-#     kr = consts.k_R # (Mh,)
-    
-#     res = np.zeros((len(kr), power.shape[1])) # shape(Mh, z)
-    
-#     for i in range(power.shape[1]):
-#         res[:,i] = np.interp(kr, kk[:,i], grad[:,i]) # loop over per redshift
-    
-#     return res
 
 def get_dlnpk_dlnk():
     """

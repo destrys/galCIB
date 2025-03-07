@@ -10,7 +10,8 @@ import numpy as np
 
 # integrates using simpson method 
 from scipy.integrate import simpson, trapezoid
-from scipy.interpolate import interp1d
+#from scipy.interpolate import interp1d
+from scipy.interpolate import CubicSpline
 
 # import local modules
 import consts
@@ -47,13 +48,95 @@ wcibwgal = pc.w_cibxgal
 wcibwcib = pc.w_cibxcib
 wgalwgal = pc.w_galxgal/(consts.dchi_dz**2).value
 z_all = consts.Plin['z']
+cc = consts.cc # color correction factor 
 
 # geometric prefactor
 prefact_gg = geo * wgalwgal
 prefact_gcib = geo * wcibwgal
 prefact_cibcib = geo * wcibwcib
 
-def pcl_binned(theta, M, B):
+# interpolate ell values
+ell_range = np.arange(consts.LMIN, consts.LMAX)
+ell_sampled = consts.ell
+ELL_sampled = np.logspace(np.log10(consts.LMIN), 
+                          np.log10(consts.LMAX), 20)
+print(ell_sampled)
+# Precompute the correction factors for the upper triangle
+def precompute_cc_correction(cc):
+    """
+    Precompute the multiplicative correction factors for the unique pairs in the upper triangle.
+    
+    Args:
+        cc: 1D array of size 6 for correction factors.
+        
+    Returns:
+        ccXcc: 1D array of size 21 containing the correction factors.
+    """
+    idx_upper = np.triu_indices(6)
+    ccXcc = cc[idx_upper[0]] * cc[idx_upper[1]]  # Precompute pairwise corrections
+    return ccXcc
+ccXcc = precompute_cc_correction(cc) 
+
+def bin_pcl(r=[],mat=[],r_bins=[]):
+    """Sukhdeep's Code to bins data and covariance arrays
+
+    Input:
+    -----
+        r  : array which will be used to bin data, e.g. ell values
+        mat : array or matrix which will be binned, e.g. Cl values
+        bins : array that defines the left edge of the bins,
+               bins is the same unit as r
+
+    Output:
+    ------
+        bin_center : array of mid-point of the bins, e.g. ELL values
+        mat_int : binned array or matrix
+    """
+
+    bin_center=0.5*(r_bins[1:]+r_bins[:-1])
+    n_bins=len(bin_center)
+    ndim=len(mat.shape)
+    mat_int=np.zeros([n_bins]*ndim,dtype='float64')
+    norm_int=np.zeros([n_bins]*ndim,dtype='float64')
+    bin_idx=np.digitize(r,r_bins)-1
+    r2=np.sort(np.unique(np.append(r,r_bins))) #this takes care of problems around bin edges
+    dr=np.gradient(r2)
+    r2_idx=[i for i in np.arange(len(r2)) if r2[i] in r]
+    dr=dr[r2_idx]
+    r_dr=r*dr
+
+    ls=['i','j','k','l']
+    s1=ls[0]
+    s2=ls[0]
+    r_dr_m=r_dr
+    for i in np.arange(ndim-1):
+        s1=s2+','+ls[i+1]
+        s2+=ls[i+1]
+        r_dr_m=np.einsum(s1+'->'+s2,r_dr_m,r_dr)#works ok for 2-d case
+
+    mat_r_dr=mat*r_dr_m
+    for indxs in itertools.product(np.arange(min(bin_idx),n_bins),repeat=ndim):
+        x={}#np.zeros_like(mat_r_dr,dtype='bool')
+        norm_ijk=1
+        mat_t=[]
+        for nd in np.arange(ndim):
+            slc = [slice(None)] * (ndim)
+            #x[nd]=bin_idx==indxs[nd]
+            slc[nd]=bin_idx==indxs[nd]
+            if nd==0:
+                mat_t=mat_r_dr[slc]
+            else:
+                mat_t=mat_t[slc]
+            norm_ijk*=np.sum(r_dr[slc[nd]])
+        if norm_ijk==0:
+            continue
+        mat_int[indxs]=np.sum(mat_t)/norm_ijk
+        norm_int[indxs]=norm_ijk
+    return bin_center, mat_int
+
+def pcl_binned(theta, cib_model, M, 
+               ell_range = ell_range,
+               ELL_range = ELL_sampled):
     """
     Returns pseudo-C_ell.
     
@@ -66,21 +149,29 @@ def pcl_binned(theta, M, B):
     """
     
     # calculate unbinned pcl
-    c_gcib = cibgalcross_cell_tot(theta) #(nu, ell)
-    pcl_gcib = c_gcib @ M #(nu, ell') # FIXME: need to calculate M
-    pcl_gg = "ok" #FIXME 
+    c_all = c_all(theta, cib_model)
     
-    # FIXME: bin pcl
+    # apply coupling matrix 
+    pcl_gg = c_all[0] @ M['gg']
+    pcl_gcib = c_all[1:7] @ M['gcib']
+    pcl_cibcib = c_all[7:] @ M['cibcib']
     
-    pcl_combined = np.concatenate(pcl_gg_binned, pcl_gcib_binned) #FIXME: make sure gcib order is correct
+    # apply binning
+    pcl_gg_binned = bin_pcl(mat=pcl_gg,r=ell_range)
+    pcl_gcib_binned = bin_pcl(mat=pcl_gcib,r=ell_range)
+    pcl_cibcib_binned = bin_pcl(mat=pcl_cibcib,r=ell_range)
+    
+    pcl_combined = np.concatenate(pcl_gg_binned, pcl_gcib_binned, pcl_cibcib_binned)
     return pcl_combined
 
-def c_all(theta, cib_model):
+def c_all(theta, cib_model, NSIDE):
     """
     Returns C_gg, C_gCIB, C_CIBCIB.
     
     Args:
-
+        theta : list of parameters 
+        cib_model : 'M21' or 'Y23'
+        NSIDE : healpy nside parameter 
     Returns:
         c_all_combined : vectors of 10 power spectra vectors
                         [C_gg,
@@ -91,21 +182,23 @@ def c_all(theta, cib_model):
     """
     
     # parameters 
-    hmalpha = theta[:10] # gg, gx{CIB}, {CIB_low X CIB_high}
+    hmalpha = theta[:28] # gg, gx{CIB}, {CIB_low X CIB_high}
     hmalpha_gg = hmalpha[0] # pass to galcrossgal
-    hmalpha_gcib = hmalpha[1:4] # pass to galcrosscib
-    hmalpha_cibcib = hmalpha[4:] # pass to cibcrosscib
+    hmalpha_gcib = hmalpha[1:7] # pass to galcrosscib
+    hmalpha_gcib = hmalpha_gcib[:,np.newaxis,np.newaxis]
+    hmalpha_cibcib = hmalpha[7:] # pass to cibcrosscib
+    hmalpha_cibcib = hmalpha_cibcib[:,np.newaxis,np.newaxis]
     
-    shotnoise = theta[10:19] # gx{CIB}, {CIB_low X CIB_high}
-    shotnoise_gcib = shotnoise[:3]
-    shotnoise_cibcib = shotnoise[3:]
-    
-    gal_params = theta[19:27] # Ncen (4): gamma, log10Mc, sigmaM, Ac
+    shotnoise = theta[28:55] # gx{CIB}, {CIB_low X CIB_high}
+    shotnoise_gcib = shotnoise[:6]
+    shotnoise_cibcib = shotnoise[6:]
+
+    gal_params = theta[55:63] # Ncen (4): gamma, log10Mc, sigmaM, Ac
                            # Nsat (4): As, M0, M1, alpha
-    prof_params = theta[27:30] # fexp, tau, lambda_NFW
-    cib_params = theta[30:] # SFR (6): etamax (only for M23) or L0 (only for Y23), mu_peak0, mu_peakp, sigma_M0, tau, zc
+    prof_params = theta[63:66] # fexp, tau, lambda_NFW
+    cib_params = theta[66:] # SFR (6): etamax (only for M23) or L0 (only for Y23), mu_peak0, mu_peakp, sigma_M0, tau, zc
                        # SED (3): beta, T0, alpha (only for Y23)
-    
+
     # uprof
     uprof = h.uprof_mixed(prof_params, rad200, concentration, 
                          concentration_amp) # (k, Mh, z)
@@ -115,16 +208,22 @@ def c_all(theta, cib_model):
                                     gal_type = 'ELG')
     cibterm, djc, djsub = cib.cibterm(cib_params, uprof, cib_model)
     nbar_halo = gal.nbargal_halo(Nc, Nsat, hmfzT)
-    
-    c_gg = galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, Nc)
+    c_gg = galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, Nc)[0]
     c_gcib = cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise_gcib)
-    c_cibcib = cibcrosscib_cell_tot(hmalpha_cibcib, uprof, cibterm,
-                                    djc, djsub, shotnoise_cibcib)
+    c_cibcib = cibcrosscib_cell_tot(hmalpha_cibcib, cibterm,
+                                    djc, djsub, uprof, shotnoise_cibcib)
+
+    # color correction
+    c_gcib = c_gcib * cc[:,np.newaxis]
+    c_cibcib = ccXcc[:, np.newaxis] * c_cibcib
     
-    ## FIXME: add color correction
-    
-    c_all_combined = np.hstack((c_gg, c_gcib, c_cibcib))
-    
+    # combine all
+    c_all_combined = np.vstack((c_gg, c_gcib, c_cibcib))
+    print(c_all_combined[:,0])
+    # interpolate to ell_lmax = NSIDE with delta ell = 1
+    spl = CubicSpline(ell_sampled,c_all_combined,axis=1)
+    c_all_combined = spl(ell_range)
+
     return c_all_combined
 
 def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise): 
@@ -135,9 +234,6 @@ def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise):
     # calculate Pk of both halo terms
     oneh = cibgalcross_pk_1h(galterm, cibterm)
     twoh = cibgalcross_pk_2h(galterm, cibterm)
-    
-    #FIXME: LOOP OVER hmalpha_gcib
-    hmalpha_gcib = hmalpha_gcib[:,np.newaxis,np.newaxis] # (nu, k, z)
     
     pk_oneh_plus_2h = (oneh**hmalpha_gcib + twoh**hmalpha_gcib)**(1/hmalpha_gcib)
     c_ell_1h_plus_2h = simpson(prefact_gcib * pk_oneh_plus_2h, x = z_all, 
@@ -184,13 +280,13 @@ def cibgalcross_pk_2h(galterm, cibterm, plot = False):
         
         # galaxy bias term: int HMF(Mh, z) * b(Mh, z) * gal_term (k, Mh, z) dlogMh
         
-        integrand = hmfzTXbias * galterm # (nu,k,Mh,z)
-        integral_g = simpson(y=integrand, dx=dm, axis=2) #(nu,k,z)
+        integrand = hmfzTXbias * galterm # (k,Mh,z)
+        integral_g = simpson(y=integrand, dx=dm, axis=1) #(k,z)
         
         # CIB bias term: int HMF(Mh, z) * b(Mh, z) * cib_term (nu, k, Mh, z) dlogMh
         integrand = hmfzTXbias * cibterm
         integral_cib = simpson(y=integrand, dx=dm, axis=2) # (nu,k,z)
-        pk_2h = integral_g * integral_cib * Pk_lin
+        pk_2h = integral_g[np.newaxis,:,:] * integral_cib * Pk_lin
         
         if plot:
             return pk_2h, integral_g, integral_cib
@@ -285,8 +381,6 @@ def galcrossgal_cell_1h(ncen, nsat, galterm):
     return c_1h, geo * wgalwgal
     
 ###--C_CIB,CIB--###
-#FIXME: color correction
-
 def cibcrosscib_cell_tot(hmalpha_cibcib, cibterm, 
                          djc, djsub, uprof, 
                          shotnoise):
@@ -310,15 +404,22 @@ def cibcrosscib_cell_tot(hmalpha_cibcib, cibterm,
     Returns:
         c_ell : of shape (nu, nu', ell)
     """
-    
     nnu = 6 # number of frequencies
     
     # store C_ell
     c_ell = np.zeros((nnu, nnu, len(consts.ell)))
                 
     # calculate 3D power spectra
-    p2h = cibcrosscib_pk_2h(cibterm)    
+    p2h = cibcrosscib_pk_2h(cibterm)
     p1h = cibcrosscib_pk_1h(djc, djsub, uprof)
+    
+    # Get the indices for the upper triangular part (including the diagonal)
+    triu_indices = np.triu_indices(nnu)
+
+    # Extract the unique upper triangular elements along the first two axes
+    p2h = p2h[triu_indices[0],triu_indices[1],:,:]
+    p1h = p1h[triu_indices[0],triu_indices[1],:,:]
+    
     ptot = (p1h**hmalpha_cibcib + p2h**hmalpha_cibcib)**(1/hmalpha_cibcib)
     
     # calculate C_ell
@@ -326,7 +427,7 @@ def cibcrosscib_cell_tot(hmalpha_cibcib, cibterm,
     c_ell = simpson(integrand, x=z_all, axis=-1) # over z
     
     # add shot noise
-    c_ell = c_ell + shotnoise 
+    c_ell = c_ell + shotnoise[:,np.newaxis] 
     return c_ell
             
 def cibcrosscib_pk_2h(cibterm):
@@ -339,18 +440,17 @@ def cibcrosscib_pk_2h(cibterm):
     integral_nu = integral_nu' = int dlog10Mh * I-term * b(Mh, z) * HMF
     
     Args:
-        
+        cibterm: (nu,k,z)
     Returns: 
         P_CIBXCIB : of shape (k,z)
     """
     
     # integrals
     integrand = cibterm * hmfzTXbias 
-    integral = simpson(y=integrand, dx=dm, axis=2) #(nu, k,z)
+    integral = simpson(y=integrand, dx=dm, axis=2) #(nu,k,z)
     
     # Pairwise products of integrals for unique combinations (nu_i, nu_j)
     pk2h_all = np.einsum('ikz,jkz->ijkz', integral, integral)  # Shape (nu, nu, k, z)
-
     pk2h_all = Pk_lin * pk2h_all 
     
     return pk2h_all

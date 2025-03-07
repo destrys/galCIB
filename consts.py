@@ -14,11 +14,13 @@ import pickle
 import glob
 
 # analysis variables
-NSIDE = 2048 #FIXME: current galaxy windows are at 1024 
-LMAX = 2000
-LMIN = 100
+NSIDE = 1024 #FIXME: current galaxy windows are at 1024 
+LMAX = 2*NSIDE
+LMIN = 1
 #ell = np.arange(LMIN, LMAX)
-ell = np.logspace(2, np.log10(2000), 99)
+ell = np.linspace(LMIN, LMAX, 99)
+#ell = np.logspace(2,3,99)
+#ell = np.arange(0, 2000, 1)
 
 # global variables 
 speed_of_light = apconst.c # in ms^-1
@@ -69,7 +71,7 @@ rho_crit = (planck.critical_density(Plin['z'])).to(u.Msun/u.Mpc**3).value # unit
 mean_density0 = (OmegaM0*planck.critical_density0).to(u.Msun/u.Mpc**3).value # Returns mean density at z = 0, units of Msol/Mpc^3
 Hz_over_c_times_chi2 = Hz_list/(speed_of_light * chi_list**2)
 Hz_over_c_times_chi2 = Hz_over_c_times_chi2.decompose(bases=[u.Mpc]) # convert to units of 1/Mpc^3
-Hz_over_c_times_chi2[0] = 0 # since no bins there
+#Hz_over_c_times_chi2[0] = 0 # since no bins there
 
 chi2 = chi_list**2 
 #dchi_dz = speed_of_light.to(u.km/u.s)/planck.H(Plin['z'])
@@ -280,6 +282,11 @@ from scipy.interpolate import RectBivariateSpline
 unfiltered_snu = RectBivariateSpline(freq, redshifts_M23,
                                      snu_unfiltered)
 snu_eff_z = unfiltered_snu(nu0, Plin['z'])
+
+# color correction
+# CIB power spectra need to be corrected 
+# in order of nu list 
+cc = np.array([1.076, 1.017, 1.119, 1.097, 1.068, 0.995])
 
 ## pre-calculate S_eff variables (parametrized version)
 # Planck frequencies for CIB are: (100, 143, 217, 353, 545, 857) GHz frequencies

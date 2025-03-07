@@ -59,7 +59,7 @@ chi_cib = consts.chi_cib
 
 ###--RADIAL KERNEL---###
 
-def get_W_cib(z_cib): #FIXME
+def get_W_cib(z_cib):
     """
     Returns redshift kernel of CIB field.
     """
@@ -102,44 +102,6 @@ def cibterm(params, u, cib_model):
     
 
 ###--START OF C_ell HELPER FUNCTIONS--###
-
-# def jbar(params, model):
-#     """
-#     Returns the mean emissivity of the CIB halos.
-    
-#     Args:
-#         nu : measurement frequency
-#         Mh : halo mass
-    
-#     Returns:
-#         res : of shape (nu, z)
-#     """
-    
-#     ##FIXME: maybe calculate phiCIB here and pass it down to relevant functions
-#     ## FIXME: phiCIB only needed if we test model S12
-    
-#     if (model == 'S21') | (model == 'Y23'):
-#         params_sfr = params[:-3] 
-#         params_seff = params[-3:] # last three params
-#         seff = Seff(params_seff, model = model) # shape (nu, z)
-#     elif model == 'M23':
-#         params_sfr = params
-#         #FIXME: call fitted seff here. 
-#     else:
-#         print("Did not input correct model.")
-    
-    
-#     #djc/s returns of the shape (nu, Mh, z)
-#     djdlogmh = djc_dlogMh(params_sfr, seff, 
-#                           model) + djsub_dlogMh(params_sfr, seff,
-#                                                 model)
-#     dm = np.log10(Mh[1]/Mh[0])
-#     integrand = djdlogmh*hmfz
-    
-#     # integrate along log mass axis 
-#     res = simpson(integrand, dx=dm, axis = 1)
-#     return res
-
 def djc_dlogMh(params_sfr, seff, model):
     """
     Returns the emissivity of central galaxies per log halo mass. 
@@ -275,8 +237,6 @@ def nu0_z(beta, Td):
     Returns:
         nu0z: pivot frequencies as a function of redshift. Shape (z,)
     """
-    
-    #FIXME: is this actually smoothly connecting?
     
     h_kT = hp_over_kB/Td # shape (z,)
     K = (dgamma + beta + 3)
@@ -483,9 +443,9 @@ def SFRc(params, model):
         IR_hod_params = (Mmin_IR, IR_sigma_lnM)
         sfr = SFR(etamax, mu_peak0, mu_peakp, 
                   sigma_M0, tau, zc)
-        #mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')[:,np.newaxis] #FIXME: only if no z evolution model of N_c
-        print("you set meanIR to 1 by hand for testing.")
-        mean_N_IR_c = 1 #FIXME: only to match M21 
+        mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')[:,np.newaxis] #FIXME: only if no z evolution model of N_c
+        #print("you set meanIR to 1 by hand for testing.")
+        #mean_N_IR_c = 1 #FIXME: only to match M21 
         sfrc = sfr * mean_N_IR_c
 
     elif model == 'Y23':
@@ -591,103 +551,3 @@ def eta(etamax, mu_peak0, mu_peakp, sigma_M0,
     return eta_val
 
 ###--END OF SFR MODELING--###
-
-# # Deprecated, useful for the S12 model
-# def phi_CIB(delta):
-#     """
-#     Returns redshift kernel of CIB contribution. 
-    
-#     from 2.26 of 2310.10848 (originally 22 of 1109.1522).
-    
-#     Phi(z) = (1 + z)^delta
-    
-#     Args:
-#         delta : power index defining redshift evolution contribution.
-#     """
-    
-#     phi = (1 + z)**delta
-    
-#     return phi
-
-# def Sigmasub(sigma_M0, mu_peak0, mu_peakp):
-    
-#     """
-#     Returns Luminosity-Mass relationship of satellite galaxies. 
-#     From 2.33 of 2310.10848.
-    
-#     Sigma_s(M) = integrate from M_min to M 
-#     integrand = d ln m dN_sub/dln m (m | M) Sigma(M)
-    
-#     Args:
-#         sigma_M0 : halo mass range contributing to IR emissivity 
-#         mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
-#         mu_peakp : rate of change of halo mass contributing to IR emissity at higher z  
-    
-#     Returns : 
-#         res : of shape (Mh, z)
-#     """
-    
-#     # Represents minimum halo mass that can host subhalos
-#     Mmin = 1e6 #Msun according to pg 11 of 2310.10848. 
-    
-#     # Discretize the log-space between Mmin and Mmax for all Mh values
-#     def log_m_range_vectorized(M, num_points=100):
-#         """Create a 2D log-spaced array of m values for each M."""
-        
-#         M_log_min = np.log(Mmin) 
-#         M_log_vals = np.log(M)
-#         log_m_vals = M_log_min + (np.linspace(0, 1, num_points) * (M_log_vals[:, np.newaxis] - M_log_min))  # Shape (len(M), num_points)
-#         m_vals = np.exp(log_m_vals)  # Convert back to m values
-#         return m_vals  # Shape (len(M), num_points)
-
-#     # Generate the 2D m grid for each Mh
-#     m_vals = log_m_range_vectorized(Mh)  # Shape (Mh, m) here m is of length num_points
-
-#     # Compute subhalo function (m, M)
-#     subhalo_func = subhmf(m_vals, Mh)  # Shape (Mh, m)
-    
-#     # Compute Sigma(m, z) for all m and z
-#     Sigma_vals =  Sigma(sigma_M0, mu_peak0, mu_peakp)
-    
-#     # Integrate over ln m
-#     ln_m_vals = np.log(m_vals)
-    
-#     #FIXME: can take out Sigma since it does not depend on m? 
-#     integral = simpson(subhalo_func, x=ln_m_vals, axis=1)  # Shape (Mh,)
-    
-#     # Combine results: Sigmas(M, z) = Sigma(M, z) * integral
-#     res = Sigma_vals * integral[:, np.newaxis]  # Shape (Mh, z)
-    
-#     return res
-
-# # DONE 
-# def Sigma(sigma_M0, mu_peak0, mu_peakp):
-    """
-    Returns the Luminosity-Mass relation.
-    From 2.30 of 2310.10848 (originally 23 of 1109.1522)
-    
-    Sigma(M) = M * 1/sqrt(2*pi*sigma_M,0^2) * exp[-0.5(ln M - lnM_peak)^2/sigma_M,0^2]
-    
-    Args:
-        sigma_M0 : halo mass range contributing to IR emissivity 
-        mu_peak0 : peak of halo mass contributing to IR emissivity at z = 0
-        mu_peakp : rate of change of halo mass contributing to IR emissity at higher z 
-    
-    Returns: 
-        res : of shape (Mh, z)
-    """
-    
-    
-    M_peak = mu_peak0 + mu_peakp * z/(1+z) # M_peak may change with z 
-
-    # broadcast properly since Sigma is of shape (Mh, z)
-    M = Mhc[:, np.newaxis] # Make M a column vector of shape (len(Mh), 1)
-    M_peak_z = M_peak[np.newaxis, :]  # Make M_peak(z) a row vector of shape (1, len(z))
-    
-    prefact = M/np.sqrt(2 * np.pi * sigma_M0**2)
-    
-    expterm = -0.5 * ((np.log(M) - np.log(M_peak_z))/sigma_M0)**2
-    
-    res = prefact * np.exp(expterm)
-    
-    return res
