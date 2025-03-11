@@ -22,25 +22,6 @@ dm = consts.log10Mh[1] - consts.log10Mh[0]
 # read in survey information
 z = consts.Plin['z']
 
-
-# read in ELG constants
-# gal_type = 'ELG'
-# dict_gal = consts.dict_gal[gal_type]
-# pz = dict_gal['pz']
-# z = dict_gal['z']
-
-# Ac = dict_gal['HOD']['Ac']
-# log10Mc = dict_gal['HOD']['log10Mc']
-# sigmaM = dict_gal['HOD']['sigmaM']
-# gamma = dict_gal['HOD']['gamma']
-# As = dict_gal['HOD']['As']
-# M0 = dict_gal['HOD']['M0']
-# M1 = dict_gal['HOD']['M1']
-# alpha = dict_gal['HOD']['alpha']
-
-# read in CIB galaxy constants
-#IR_sigma_lnM = consts.dict_gal['IR']['HOD']['sigma_lnM']
-
 def Ncen_GHOD(log10Mc, sigmaM, Ac):
     """
     Returns num. of central galaxies per halo, as a function
