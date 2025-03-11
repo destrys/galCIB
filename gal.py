@@ -122,9 +122,7 @@ def get_Wmu(dict_gal, mag_bias_alpha):
     of redshift of the galaxies.
     """
     
-    z = dict_gal['z']
     pz = dict_gal['pz']
-    #chi = dict_gal['chi']
     chi = consts.chi_list
     Hz = consts.Hz_list
     
