@@ -34,7 +34,7 @@ w_mu = gal.get_Wmu(dict_gal=consts.dict_gal['ELG'])
 w_gal_tot = w_gal + w_mu
 w_cibxgal = w_gal_tot * w_cib
 w_cibxcib = w_cib**2
-w_galxgal = w_gal**2
+w_galxgal = w_gal_tot**2
 
 ##--BIAS MODEL--##
 
