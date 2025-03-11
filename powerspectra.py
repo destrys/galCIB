@@ -4,6 +4,7 @@ Script repurposed from Abhishek Maniyar's DopplerCIB github.
 Author: Tanveer Karim
 Last Updated: 12 Dec 2024 (Fixed CIB-CIB bugs; now matches DopplerCIB)
 Updated: 18 Nov 2024 (Added CIB-CIB function)
+Updated: 11 Mar 2025 (Added n(z) user-specified option)
 """
 
 import numpy as np
@@ -20,10 +21,11 @@ import gal
 import cib
 import halo as h
 
+#TODO: refactor code to not read these as consts if user specifies galaxy n(z)
 # cosmology constants
 Hz = consts.Hz_list
 chi = consts.chi_list
-geo = (consts.dchi_dz/consts.chi2).value
+geo = (consts.dchi_dz/consts.chi2).value # NOTE: power spectra is defined over the grid [0.05, 10.15] with spacing of delta_z = 0.1 
 
 # halo constants 
 Mh = consts.Mh_Msol
@@ -44,9 +46,10 @@ dlnpk_dlnk = pc.dlnpk_dlnk
 rad200 = pc.rad200
 concentration = pc.concentration
 concentration_amp = pc.concentration_amp
-wcibwgal = pc.w_cibxgal
+wcib = pc.w_cib
+wcibwgal = pc.w_cibxgal(consts.dchi_dz).value # Eqn A17 of https://arxiv.org/pdf/2204.05299
 wcibwcib = pc.w_cibxcib
-wgalwgal = pc.w_galxgal/(consts.dchi_dz**2).value
+wgalwgal = pc.w_galxgal/(consts.dchi_dz**2).value # Eqn A17 of https://arxiv.org/pdf/2204.05299
 z_all = consts.Plin['z']
 cc = consts.cc # color correction factor 
 
@@ -219,14 +222,15 @@ def c_all(theta, cib_model, NSIDE):
     
     # combine all
     c_all_combined = np.vstack((c_gg, c_gcib, c_cibcib))
-    print(c_all_combined[:,0])
+
     # interpolate to ell_lmax = NSIDE with delta ell = 1
     spl = CubicSpline(ell_sampled,c_all_combined,axis=1)
     c_all_combined = spl(ell_range)
 
     return c_all_combined
 
-def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise): 
+def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise,
+                         pz = None): 
     """
     Returns C_{g, CIB} accounting for all halo terms.
     """
@@ -236,8 +240,19 @@ def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise):
     twoh = cibgalcross_pk_2h(galterm, cibterm)
     
     pk_oneh_plus_2h = (oneh**hmalpha_gcib + twoh**hmalpha_gcib)**(1/hmalpha_gcib)
-    c_ell_1h_plus_2h = simpson(prefact_gcib * pk_oneh_plus_2h, x = z_all, 
-                               axis=2)
+    
+    if pz is None:
+        integrand = prefact_gcib * pk_oneh_plus_2h
+    else:
+        pz = interpolate_user_pz(pz)
+        wgal = gal.get_Wgal(dict_gal=pz)
+        wmu = gal.get_Wmu
+        wgal_tot = (wgal + wmu)/(consts.dchi_dz**2).value ##FIXME: check if wmu should be divided by dchi/dz
+        wcibwgal = wgal_tot * wcib
+        prefact_gcib = geo * wcibwgal
+        integrand = prefact_gcib * pk_oneh_plus_2h
+    
+    c_ell_1h_plus_2h = simpson(integrand, x = z_all, axis=2)
     tot = c_ell_1h_plus_2h + shotnoise[:,np.newaxis] # (nu, ell)
     
     return tot
@@ -296,11 +311,13 @@ def cibgalcross_pk_2h(galterm, cibterm, plot = False):
 ###--C_gal,gal---###
 
 def galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, 
-                         Nc):
+                         Nc, pz = None):
     """
     Returns C_gg total based on Pk.
-    
     NOTE: it does not contain gg shot noise.
+    
+    Args:
+        pz : binned galaxy redshift distribution density function 
     """
     
     p2h = galcrossgal_pk_2h(galterm, nbar_halo)
@@ -308,10 +325,33 @@ def galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo,
     
     p_tot = (p2h**hmalpha_gg + p1h**hmalpha_gg)**(1/hmalpha_gg)
     
-    integrand = prefact_gg * p_tot
+    if pz is None:
+        integrand = prefact_gg * p_tot
+    else:
+        pz = interpolate_user_pz(pz)
+        wgal = gal.get_Wgal(dict_gal=pz)
+        wgalwgal = wgal**2/(consts.dchi_dz**2).value
+        prefact_gg = geo * wgalwgal
+        integrand = prefact_gg * p_tot
+        
     c_ell = simpson(integrand, x=z_all, axis=-1)
     
     return c_ell
+    
+def interpolate_user_pz(pz):
+    """
+    Interpolate user-defined pz on the same grid as Pk.
+    
+    Args: 
+        pz: dict with keywords 'z' and 'pz' corresponds to the redshift and the density values.
+    """    
+    
+    #TODO: make sure this interpolation is fine where left and right are set to the first and last values.
+    pz_interpd = np.interp(z_all, pz['z'], pz['pz'])
+    
+    return pz_interpd
+    
+    
     
 def galcrossgal_pk_2h(galterm, nbar_halo):
     """
