@@ -116,7 +116,7 @@ def Nsat(hod_params):
     
     return res
 
-def get_Wmu(dict_gal):
+def get_Wmu(dict_gal, mag_bias_alpha):
     """
     Returns magnification bias kernel as a func. 
     of redshift of the galaxies.
@@ -127,8 +127,6 @@ def get_Wmu(dict_gal):
     #chi = dict_gal['chi']
     chi = consts.chi_list
     Hz = consts.Hz_list
-    mag_bias_alpha = dict_gal['mag_bias_alpha']
-    
     
     mag_bias_prefact = 3 * OmegaM0/(2 * consts.speed_of_light)
     mag_bias_prefact = (mag_bias_prefact * consts.H0**2/Hz * (1 + z) * chi).decompose() # to reduce to the same unit

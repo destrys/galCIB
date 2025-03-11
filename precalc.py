@@ -30,7 +30,8 @@ concentration_amp = h.ampl_nfw(concentration)
 z_all = consts.Plin['z']
 w_cib = cib.get_W_cib(z_cib=z_all)
 w_gal = gal.get_Wgal(dict_gal=consts.dict_gal['ELG'])
-w_mu = gal.get_Wmu(dict_gal=consts.dict_gal['ELG'])
+w_mu = gal.get_Wmu(dict_gal=consts.dict_gal['ELG'],
+                   mag_bias_alpha=consts.dict_gal['ELG']['mag_bias_alpha'])
 w_gal_tot = w_gal + w_mu
 w_cibxgal = w_gal_tot * w_cib
 w_cibxcib = w_cib**2
