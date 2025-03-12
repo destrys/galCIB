@@ -47,7 +47,7 @@ rad200 = pc.rad200
 concentration = pc.concentration
 concentration_amp = pc.concentration_amp
 wcib = pc.w_cib
-wcibwgal = pc.w_cibxgal(consts.dchi_dz).value # Eqn A17 of https://arxiv.org/pdf/2204.05299
+wcibwgal = pc.w_cibxgal/(consts.dchi_dz).value # Eqn A17 of https://arxiv.org/pdf/2204.05299
 wcibwcib = pc.w_cibxcib
 wgalwgal = pc.w_galxgal/(consts.dchi_dz**2).value # Eqn A17 of https://arxiv.org/pdf/2204.05299
 z_all = consts.Plin['z']
@@ -63,7 +63,7 @@ ell_range = np.arange(consts.LMIN, consts.LMAX)
 ell_sampled = consts.ell
 ELL_sampled = np.logspace(np.log10(consts.LMIN), 
                           np.log10(consts.LMAX), 20)
-print(ell_sampled)
+
 # Precompute the correction factors for the upper triangle
 def precompute_cc_correction(cc):
     """
@@ -167,7 +167,7 @@ def pcl_binned(theta, cib_model, M,
     pcl_combined = np.concatenate(pcl_gg_binned, pcl_gcib_binned, pcl_cibcib_binned)
     return pcl_combined
 
-def c_all(theta, cib_model, NSIDE):
+def c_all(theta, cib_model, NSIDE, pz=None, mag_bias_alpha=None):
     """
     Returns C_gg, C_gCIB, C_CIBCIB.
     
@@ -211,8 +211,10 @@ def c_all(theta, cib_model, NSIDE):
                                     gal_type = 'ELG')
     cibterm, djc, djsub = cib.cibterm(cib_params, uprof, cib_model)
     nbar_halo = gal.nbargal_halo(Nc, Nsat, hmfzT)
-    c_gg = galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, Nc)[0]
-    c_gcib = cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise_gcib)
+    c_gg = galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, Nc,
+                                pz=pz, mag_bias_alpha=mag_bias_alpha)[0]
+    c_gcib = cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise_gcib,
+                                  pz=pz,mag_bias_alpha=mag_bias_alpha)
     c_cibcib = cibcrosscib_cell_tot(hmalpha_cibcib, cibterm,
                                     djc, djsub, uprof, shotnoise_cibcib)
 
@@ -230,7 +232,7 @@ def c_all(theta, cib_model, NSIDE):
     return c_all_combined
 
 def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise,
-                         pz = None): 
+                         pz = None,mag_bias_alpha=None): 
     """
     Returns C_{g, CIB} accounting for all halo terms.
     """
@@ -241,16 +243,17 @@ def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise,
     
     pk_oneh_plus_2h = (oneh**hmalpha_gcib + twoh**hmalpha_gcib)**(1/hmalpha_gcib)
     
-    if pz is None:
-        integrand = prefact_gcib * pk_oneh_plus_2h
+    if pz is None: # decide whether to recalculate prefactors
+        local_prefact_gcib = prefact_gcib 
     else:
         pz = interpolate_user_pz(pz)
-        wgal = gal.get_Wgal(dict_gal=pz)
-        wmu = gal.get_Wmu
-        wgal_tot = (wgal + wmu)/(consts.dchi_dz**2).value ##FIXME: check if wmu should be divided by dchi/dz
+        wgal = gal.get_Wgal(pz)
+        wmu = gal.get_Wmu(pz,mag_bias_alpha=mag_bias_alpha)
+        wgal_tot = (wgal + wmu)/(consts.dchi_dz).value ##FIXME: check if wmu should be divided by dchi/dz
         wcibwgal = wgal_tot * wcib
-        prefact_gcib = geo * wcibwgal
-        integrand = prefact_gcib * pk_oneh_plus_2h
+        local_prefact_gcib = geo * wcibwgal
+    
+    integrand = local_prefact_gcib * pk_oneh_plus_2h
     
     c_ell_1h_plus_2h = simpson(integrand, x = z_all, axis=2)
     tot = c_ell_1h_plus_2h + shotnoise[:,np.newaxis] # (nu, ell)
@@ -311,7 +314,7 @@ def cibgalcross_pk_2h(galterm, cibterm, plot = False):
 ###--C_gal,gal---###
 
 def galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, 
-                         Nc, pz = None):
+                         Nc, pz=None, mag_bias_alpha=None):
     """
     Returns C_gg total based on Pk.
     NOTE: it does not contain gg shot noise.
@@ -319,20 +322,23 @@ def galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo,
     Args:
         pz : binned galaxy redshift distribution density function 
     """
-    
+    #print(f'prefact = {prefact_gg}')
     p2h = galcrossgal_pk_2h(galterm, nbar_halo)
     p1h = galcrossgal_pk_1h(galterm, nbar_halo, Nc)
     
     p_tot = (p2h**hmalpha_gg + p1h**hmalpha_gg)**(1/hmalpha_gg)
     
     if pz is None:
-        integrand = prefact_gg * p_tot
+        local_prefact_gg = prefact_gg
     else:
         pz = interpolate_user_pz(pz)
         wgal = gal.get_Wgal(dict_gal=pz)
-        wgalwgal = wgal**2/(consts.dchi_dz**2).value
-        prefact_gg = geo * wgalwgal
-        integrand = prefact_gg * p_tot
+        wmu = gal.get_Wmu(pz,mag_bias_alpha=mag_bias_alpha)
+        wgal_tot = (wgal + wmu)/(consts.dchi_dz).value ##FIXME: check if wmu should be divided by dchi/dz
+        wgalwgal_tot = wgal_tot**2
+        local_prefact_gg = geo * wgalwgal_tot
+    
+    integrand = local_prefact_gg * p_tot
         
     c_ell = simpson(integrand, x=z_all, axis=-1)
     
@@ -346,8 +352,8 @@ def interpolate_user_pz(pz):
         pz: dict with keywords 'z' and 'pz' corresponds to the redshift and the density values.
     """    
     
-    #TODO: make sure this interpolation is fine where left and right are set to the first and last values.
-    pz_interpd = np.interp(z_all, pz['z'], pz['pz'])
+    pz_interpd = {}
+    pz_interpd['pz'] = np.interp(z_all, pz['z'], pz['pz'], left = 0, right = 0)
     
     return pz_interpd
     
