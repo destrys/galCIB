@@ -15,12 +15,9 @@ import glob
 
 # analysis variables
 NSIDE = 1024 #FIXME: current galaxy windows are at 1024 
-LMAX = 2*NSIDE
-LMIN = 1
-#ell = np.arange(LMIN, LMAX)
+LMAX = 3*NSIDE - 1
+LMIN = 0
 ell = np.linspace(LMIN, LMAX, 99)
-#ell = np.logspace(2,3,99)
-#ell = np.arange(0, 2000, 1)
 
 # global variables 
 speed_of_light = apconst.c # in ms^-1
@@ -65,35 +62,25 @@ Hz_list = planck.H(Plin['z']) # H(z)
 Omegab_to_OmegaM_over_z = planck.Ob(Plin['z'])/planck.Om(Plin['z'])
 rho_crit = (planck.critical_density(Plin['z'])).to(u.Msun/u.Mpc**3).value # units of Msol/Mpc^3
 
-### rho_crit ### 
-#rho_crit_tst = (planck.critical_density(0.012)).to(u.Msun/u.Mpc**3).value # units of Msol/Mpc^3
-
 mean_density0 = (OmegaM0*planck.critical_density0).to(u.Msun/u.Mpc**3).value # Returns mean density at z = 0, units of Msol/Mpc^3
 Hz_over_c_times_chi2 = Hz_list/(speed_of_light * chi_list**2)
 Hz_over_c_times_chi2 = Hz_over_c_times_chi2.decompose(bases=[u.Mpc]) # convert to units of 1/Mpc^3
-#Hz_over_c_times_chi2[0] = 0 # since no bins there
 
 chi2 = chi_list**2 
-#dchi_dz = speed_of_light.to(u.km/u.s)/planck.H(Plin['z'])
 dchi_dz = speed_of_light.to(u.km/u.s)/(planck.H0 * np.sqrt(planck.Om0 * (1 + Plin['z'])**3 + planck.Ode0))
 
 # based on ell and z ranges, calculate new k and pk grids
 def get_Pk_array(ell=ell, z=Plin['z']):
     nl = len(ell)
     nz = len(z)
-    #nreds = len(self.zpk)
     Pk_int = np.zeros((nl, nz)) # (ell, z)
     k_grid_over_ell = np.zeros_like(Pk_int)
-    #Pk_int = np.zeros((nl, nz)) # Pk interpolated
 
     for i in range(nz):
-        k_grid_over_ell[:,i] = ell/chi_list[i]
+        k_grid_over_ell[:,i] = (ell + 0.5)/chi_list[i]
         Pk_int[:,i] = np.interp(k_grid_over_ell[:,i], 
                               Plin['k'], 
                               Plin['pk'][i,:])
-
-    # for i in range(nl):
-    #     Pk_int[i, :] = np.interp(z, self.zpk, pk1[i, :])
 
     return Pk_int, k_grid_over_ell
 
@@ -215,11 +202,12 @@ bar_sub = BAR(ms_Msol, Plin['z']) #shape (ms, Mh, z)
 snuaddr = 'data/filtered_snu_planck.fits'
 hdulist = fits.open(snuaddr)
 redshifts_M23 = hdulist[1].data
-snu_eff_M23 = hdulist[0].data[:-1, :]  # in Jy/Lsun  # -1 because we are
-# not considering the 3000 GHz channel which comes from IRAS
+snu_eff_M23 = hdulist[0].data[3:-1, :]  # in Jy/Lsun  # -1 because we are
+# not considering the 3000 GHz channel which comes from IRAS;
+# also removing first three Planck channels since Lenz 19 does not have those
 hdulist.close()
 
-wavelengths = np.loadtxt('/Users/tkarim/Documents/research/DopplerCIB/data_files/TXT_TABLES_2015/EffectiveSED_B15_z0.012.txt')[:, [0]]
+wavelengths = np.loadtxt('../DopplerCIB/data_files/TXT_TABLES_2015/EffectiveSED_B15_z0.012.txt')[:, [0]]
 # the above wavelengths are in microns
 freq = speed_of_light.to(u.km/u.s).value/wavelengths
 # c_light is in Km/s, wavelength is in microns and we would like to
@@ -231,7 +219,7 @@ freqhz = freq*1e3*1e6
 freq *= numerical_fac
 freq_rest = freqhz*(1+redshifts_M23)
 
-list_of_files = sorted(glob.glob('/Users/tkarim/Documents/research/DopplerCIB/data_files/TXT_TABLES_2015/./*.txt'))
+list_of_files = sorted(glob.glob('../DopplerCIB/data_files/TXT_TABLES_2015/./*.txt'))
 a = list_of_files[95]
 b = list_of_files[96]
 for i in range(95, 208):
@@ -266,18 +254,18 @@ snu_unfiltered = np.zeros([n, len(redshifts_M23)])
 for i in range(len(list_of_files)):
     snu_unfiltered[:, i] = np.loadtxt(list_of_files[i])[:, 1]
 L_IR15 = L_IR(snu_unfiltered, freq_rest, redshifts_M23)
-# print (L_IR15)
 
 for i in range(len(list_of_files)):
     snu_unfiltered[:, i] = snu_unfiltered[:, i]*L_sun/L_IR15[i]
 
 # Currently unfiltered snus are ordered in increasing wavelengths,
 # we re-arrange them in increasing frequencies i.e. invert it
-
 freq = freq[::-1]
 snu_unfiltered = snu_unfiltered[::-1]
 
-nu0 = np.array([100., 143., 217., 353., 545., 857.])
+#nu0 = np.array([100., 143., 217., 353., 545., 857.])
+nu0 = np.array([353., 545., 857.]) # only the Lenz19 channels
+
 from scipy.interpolate import RectBivariateSpline
 unfiltered_snu = RectBivariateSpline(freq, redshifts_M23,
                                      snu_unfiltered)
@@ -286,27 +274,8 @@ snu_eff_z = unfiltered_snu(nu0, Plin['z'])
 # color correction
 # CIB power spectra need to be corrected 
 # in order of nu list 
-cc = np.array([1.076, 1.017, 1.119, 1.097, 1.068, 0.995])
-
-## pre-calculate S_eff variables (parametrized version)
-# Planck frequencies for CIB are: (100, 143, 217, 353, 545, 857) GHz frequencies
-
-# nu_list = np.array([100, 143, 217, 353, 545, 857]) * ghz   # convert GHz to Hz 
-
-# # M21 Seff modeling 
-# snuaddr = 'data/filtered_snu_planck.fits'
-# hdulist = fits.open(snuaddr)
-# redshifts_M23 = hdulist[1].data
-# snu_eff_M23 = hdulist[0].data[:-1, :]  # in Jy/Lsun  # -1 because we are
-# # not considering the 3000 GHz channel which comes from IRAS
-# hdulist.close()
-
-# interpolate over redshift
-# snu_eff_interp_func_M23 = interp1d(redshifts_M23, snu_eff_M23,
-#                                    kind='linear',
-#                                    bounds_error=False, 
-#                                    fill_value=0.)
-# snu_eff_z = snu_eff_interp_func_M23(Plin['z'])
+#cc = np.array([1.076, 1.017, 1.119, 1.097, 1.068, 0.995])
+cc = np.array([1.097, 1.068, 0.995]) # only the L19 channels
 
 # For parametric model, generate grid: nu_prime = (1 + z) * nu
 # broad cast properly to get nu_prime_list of shape (nu, z)

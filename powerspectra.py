@@ -21,7 +21,6 @@ import gal
 import cib
 import halo as h
 
-#TODO: refactor code to not read these as consts if user specifies galaxy n(z)
 # cosmology constants
 Hz = consts.Hz_list
 chi = consts.chi_list
@@ -65,19 +64,22 @@ ELL_sampled = np.logspace(np.log10(consts.LMIN),
                           np.log10(consts.LMAX), 20)
 
 # Precompute the correction factors for the upper triangle
-def precompute_cc_correction(cc):
+def precompute_cc_correction(cc, num_channels=3):
     """
     Precompute the multiplicative correction factors for the unique pairs in the upper triangle.
     
     Args:
-        cc: 1D array of size 6 for correction factors.
+        cc: 1D array of size num_channels for color correction factors.
+        num_channels: (int) number of CIB channels 
         
     Returns:
-        ccXcc: 1D array of size 21 containing the correction factors.
+        ccXcc: 1D array of size num_channels*(num_channels + 1)/2 containing the correction factors.
     """
-    idx_upper = np.triu_indices(6)
+    idx_upper = np.triu_indices(num_channels)
     ccXcc = cc[idx_upper[0]] * cc[idx_upper[1]]  # Precompute pairwise corrections
+    
     return ccXcc
+
 ccXcc = precompute_cc_correction(cc) 
 
 def bin_pcl(r=[],mat=[],r_bins=[]):
@@ -160,21 +162,24 @@ def pcl_binned(theta, cib_model, M,
     pcl_cibcib = c_all[7:] @ M['cibcib']
     
     # apply binning
-    pcl_gg_binned = bin_pcl(mat=pcl_gg,r=ell_range)
-    pcl_gcib_binned = bin_pcl(mat=pcl_gcib,r=ell_range)
-    pcl_cibcib_binned = bin_pcl(mat=pcl_cibcib,r=ell_range)
+    pcl_gg_binned = bin_pcl(mat=pcl_gg,r=ell_range,r_bins=ELL_range)
+    pcl_gcib_binned = bin_pcl(mat=pcl_gcib,r=ell_range,r_bins=ELL_range)
+    pcl_cibcib_binned = bin_pcl(mat=pcl_cibcib,r=ell_range,r_bins=ELL_range)
     
     pcl_combined = np.concatenate(pcl_gg_binned, pcl_gcib_binned, pcl_cibcib_binned)
     return pcl_combined
 
-def c_all(theta, cib_model, NSIDE, pz=None, mag_bias_alpha=None):
+def c_all(theta, cib_model, num_channels=3,
+          pz=None, mag_bias_alpha=None):
     """
     Returns C_gg, C_gCIB, C_CIBCIB.
     
     Args:
         theta : list of parameters 
         cib_model : 'M21' or 'Y23'
-        NSIDE : healpy nside parameter 
+        num_channels : (int) number of CIB channels
+        pz : (array) redshift distribution in probability density form 
+        mag_bias_alpha : (float) galaxy mag bias
     Returns:
         c_all_combined : vectors of 10 power spectra vectors
                         [C_gg,
@@ -184,22 +189,27 @@ def c_all(theta, cib_model, NSIDE, pz=None, mag_bias_alpha=None):
                         ]
     """
     
-    # parameters 
-    hmalpha = theta[:28] # gg, gx{CIB}, {CIB_low X CIB_high}
+    ## parameters 
+    
+    # gg, gx{CIB}, {CIB_nu X CIB_nu'}; this value is 1 + 3 + 6 = 10 for the default 3 channels
+    num_of_unique_Cls = 1+num_channels+(num_channels*(num_channels+1))//2
+    hmalpha = theta[:num_of_unique_Cls] 
+    
     hmalpha_gg = hmalpha[0] # pass to galcrossgal
-    hmalpha_gcib = hmalpha[1:7] # pass to galcrosscib
+    hmalpha_gcib = hmalpha[1:num_channels+1] # pass to galcrosscib; 1:4 for default 3 channels
     hmalpha_gcib = hmalpha_gcib[:,np.newaxis,np.newaxis]
-    hmalpha_cibcib = hmalpha[7:] # pass to cibcrosscib
+    hmalpha_cibcib = hmalpha[num_channels+1:] # pass to cibcrosscib; 4: for default 3 channels
     hmalpha_cibcib = hmalpha_cibcib[:,np.newaxis,np.newaxis]
     
-    shotnoise = theta[28:55] # gx{CIB}, {CIB_low X CIB_high}
-    shotnoise_gcib = shotnoise[:6]
-    shotnoise_cibcib = shotnoise[6:]
+    shotnoise = theta[num_of_unique_Cls:2*num_of_unique_Cls-1] # gx{CIB}, {CIB_low X CIB_high}
+    shotnoise_gcib = shotnoise[:num_channels]
+    shotnoise_cibcib = shotnoise[num_channels:]
 
-    gal_params = theta[55:63] # Ncen (4): gamma, log10Mc, sigmaM, Ac
+    start_of_physical_params = 2*num_of_unique_Cls-1
+    gal_params = theta[start_of_physical_params:start_of_physical_params+4] # Ncen (4): gamma, log10Mc, sigmaM, Ac
                            # Nsat (4): As, M0, M1, alpha
-    prof_params = theta[63:66] # fexp, tau, lambda_NFW
-    cib_params = theta[66:] # SFR (6): etamax (only for M23) or L0 (only for Y23), mu_peak0, mu_peakp, sigma_M0, tau, zc
+    prof_params = theta[start_of_physical_params+4:start_of_physical_params+4+3] # fexp, tau, lambda_NFW
+    cib_params = theta[start_of_physical_params+4+3:] # SFR (6): etamax (only for M23) or L0 (only for Y23), mu_peak0, mu_peakp, sigma_M0, tau, zc
                        # SED (3): beta, T0, alpha (only for Y23)
 
     # uprof
@@ -256,6 +266,7 @@ def cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise,
     integrand = local_prefact_gcib * pk_oneh_plus_2h
     
     c_ell_1h_plus_2h = simpson(integrand, x = z_all, axis=2)
+    c_ell_1h_plus_2h = c_ell_1h_plus_2h #* 1e-6 # convert from Jy to mJy
     tot = c_ell_1h_plus_2h + shotnoise[:,np.newaxis] # (nu, ell)
     
     return tot
@@ -448,7 +459,7 @@ def cibcrosscib_cell_tot(hmalpha_cibcib, cibterm,
             nu <-> nu' transformation.
         
     Returns:
-        c_ell : of shape (nu, nu', ell)
+        c_ell : of shape (nu, nu', ell) in UNITS OF mJy^2/sr
     """
     nnu = 6 # number of frequencies
     
@@ -474,6 +485,10 @@ def cibcrosscib_cell_tot(hmalpha_cibcib, cibterm,
     
     # add shot noise
     c_ell = c_ell + shotnoise[:,np.newaxis] 
+    
+    # convert from Jy^2/sr to mJy^2/sr
+    #c_ell = c_ell * 1e-12 
+    
     return c_ell
             
 def cibcrosscib_pk_2h(cibterm):
