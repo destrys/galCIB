@@ -6,6 +6,7 @@ DESI Legacy Imaging Surveys galaxies.
 import numpy as np
 import scipy.special as ss
 from scipy.integrate import simpson
+import astropy.units as u 
 
 # import local modules
 import consts
@@ -85,12 +86,26 @@ def Ncen(hod_params, gal_type):
         erf_term = np.log(Mh/10**Mmin)/IR_sigma_lnM
         res = 0.5 * (1 + ss.erf(erf_term)) 
         
+    elif gal_type == 'UNWISE':
+        
+        """
+        Eqn 2.11 from 2310.10848
+        
+        N_c(M) = 0.5 * (1 + erf (ln(M/M_min)/sigma_lnM))
+        """
+        
+        M_min_params, sigma_lnM = hod_params
+        M_min_z = z_evolution_model(M_min_params)
+        
+        erf_term = (np.log(Mh) - M_min_z * np.log(10))/sigma_lnM
+        res = 0.5 * (1 + ss.erf(erf_term))
+        
     else:
-        print("not ELG or IR galaxies.")
+        print("galaxy type not defined.")
 
     return res
         
-def Nsat(hod_params):
+def Nsat(hod_params, gal_type):
     """
     Returns num. of sat. gal. per halo
     
@@ -106,14 +121,36 @@ def Nsat(hod_params):
         res : vector of size (Mh,)
     """
 
-    As, M0, M1, alpha = hod_params
+    if gal_type == 'ELG':
+        As, M0, M1, alpha = hod_params
+        M0 = 10**M0 # convert from log to regular space
+        
+        # flag for halo masses for which Mh - M0 > 0;
+        # if Mh - M0 <= 0, then Nsat = 0. #FIXME: logic?
+        flag = (Mh - M0) > 0
+        res = np.zeros_like(Mh)
+        res[flag] = As * ((Mh[flag] - M0)/M1)**alpha
     
-    # flag for halo masses for which Mh - M0 > 0;
-    # if Mh - M0 <= 0, then Nsat = 0. #FIXME: logic?
-    flag = (Mh - M0) > 0
-    res = np.zeros_like(Mh)
-    res[flag] = As * ((Mh[flag] - M0)/M1)**alpha
-    
+    elif gal_type == 'UNWISE':
+        
+        """
+        Eqn 2.11 from 2310.10848
+        
+        Nsat(M) = Nc(M) * Heaviside(M-M0) * ((M - M0)/M1)**alpha_s
+        """
+        
+        nc_hod_params, M0_params, M1_params, alpha_s = hod_params 
+        Nc_M = Ncen(nc_hod_params, gal_type=gal_type)
+        
+        M0 = 10**z_evolution_model(M0_params)
+        M1 = 10**z_evolution_model(M1_params)
+        
+        M_M0 = Mh - M0
+        heaviside_term = np.heaviside(x1 = M_M0, x2 = 1)
+        ratio_term = (M_M0/M1)**alpha_s
+        
+        res = Nc_M * heaviside_term * ratio_term       
+        
     return res
 
 def get_Wmu(dict_gal, mag_bias_alpha):
@@ -126,24 +163,57 @@ def get_Wmu(dict_gal, mag_bias_alpha):
     chi = consts.chi_list
     Hz = consts.Hz_list
     
-    mag_bias_prefact = 3 * OmegaM0/(2 * consts.speed_of_light)
-    mag_bias_prefact = (mag_bias_prefact * consts.H0**2/Hz * (1 + z) * chi).decompose() # to reduce to the same unit
+    # Eqn 6 of 1410.4502
     
+    # prefactor = 3/2 * Omega_M0/c * H0^2/H(z) * (1+z) * chi(z) * (alpha - 1) 
+    # NOTE: if alpha == alpha(z), then that term should enter the integral
+    # here we assume it is z-independent 
+    
+    mag_bias_prefact = (3/2 * consts.OmegaM0/(consts.speed_of_light) * consts.H0**2/consts.Hz_list * (1+consts.Plin['z']) * consts.chi_list).decompose()
+    mag_bias_prefact =  mag_bias_prefact * (mag_bias_alpha - 1) # assuming alpha is z-independent 
+    #mag_bias_prefact = (mag_bias_prefact * consts.H0**2/Hz * (1 + z) * chi).decompose() # to reduce to the same unit
+
     integrated_values = np.zeros_like(z)
-    for i in range(len(z)): # loop over to get integrand values 
-      zspecific_indx = i
+    
+    # integral of dz' * (1 - chi(z)/chi(z')) * dN/dz' from z'=z to z'=1090
+    for i in range(len(z)):
+        
+        # consider the specific redshift from itself all the way to CMB;
+        flag = (z >= z[i]) 
+        
+        # dN/dz'
+        pz_mag_bias = pz[flag]
+        
+        # chi(z')
+        chi_list_mag_bias = chi[flag]
+        
+        #chi(z)
+        chi_at_z = chi[i]
+        
+        ratio = 1 - chi_at_z/chi_list_mag_bias
+        
+        # integrand 
+        integrand = ratio * pz_mag_bias
+        
+        integrated_values[i] = simpson(integrand, x=z[flag])
+        
+        #return mag_bias_term
+        
+    
+    # for i in range(len(z)): # loop over to get integrand values 
+    #   zspecific_indx = i
       
-      # only consider bins above the specific index 
-      flag = (z >= z[zspecific_indx])
-      ratio = chi[zspecific_indx]/chi[flag]
+    #   # only consider bins above the specific index 
+    #   flag = (z >= z[zspecific_indx])
+    #   ratio = chi[zspecific_indx]/chi[flag]
       
-      # assuming constant alpha over z 
-      integrand_term = (1 - ratio) * (mag_bias_alpha - 1) * pz[flag]
-      integrated_values[i] = simpson(y = integrand_term, x = z[flag])
+    #   # assuming constant alpha over z 
+    #   integrand_term = (1 - ratio) * (mag_bias_alpha - 1) * pz[flag]
+    #   integrated_values[i] = simpson(y = integrand_term, x = z[flag])
   
     mag_bias_term = mag_bias_prefact * integrated_values
-
-    return mag_bias_term.value # shape (z,)
+    
+    return mag_bias_term # shape (z,)
 
 def get_Wgal(dict_gal):
     """
