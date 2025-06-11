@@ -19,8 +19,6 @@ setup(
         "scipy>=1.14.0",
         "astropy>=5.1.1",
         "colossus>=1.3.8",
-        "glob",
-        "pickle>=4.0",
         "camb>=1.5.4"
     ],
     # extra_requires={
