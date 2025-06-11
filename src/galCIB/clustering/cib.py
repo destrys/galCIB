@@ -3,10 +3,7 @@ This module contains functions useful for CIB halo modelling.
 """
 
 import numpy as np
-import consts
-
-# for HOD of IR galaxies
-from . import gal 
+from .. import consts
 
 # integrates using simpson method 
 from scipy.integrate import simpson
@@ -436,6 +433,8 @@ def SFRc(params, model):
         Mhc : halo mass of central galaxies
         model : model name 
     """
+    
+    from . import gal # for HOD of IR galaxies
     
     if model == 'M21':
         #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)

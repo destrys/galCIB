@@ -17,8 +17,19 @@ from colossus.lss import mass_function
 # Redshift range covering both ELG and CIB in bins of ELG
 #z_all = np.arange(0.05, 10.22, 0.1)
 
+import os
+
+# Absolute path to the folder where cosmology.py lives
+this_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Construct absolute path to data folder
+data_path = os.path.join(this_dir, '..', '..', 'data', 'minimal')
+
+# Normalize the path
+d_folder = os.path.normpath(data_path)
+
 # data folder
-d_folder = "../../data/minimal"
+#d_folder = "../../data/minimal"
 
 #FIXME: run it only for comparison with DopplerCIB
 z_all = np.loadtxt(f'{d_folder}/cib/redshifts.txt')
@@ -105,6 +116,6 @@ if SAVE:
     hmfz_dict['M_Msol_h'] = Mh_Msol_h
     hmfz_dict['hmfz_log10M'] = hmfz
     
-    with open('f{d_folder}/cosmology/hmfz_h_DopplerCIB.p', 'wb') as handle:
+    with open(f'{d_folder}/cosmology/hmfz_h_DopplerCIB.p', 'wb') as handle:
         pickle.dump(hmfz_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
         

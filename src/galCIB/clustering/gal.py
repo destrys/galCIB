@@ -10,7 +10,7 @@ import astropy.units as u
 
 # import local modules
 from .. import consts
-from .. import halo 
+#from .. import halo 
 
 # read in cosmological constants
 OmegaM0 = consts.OmegaM0
