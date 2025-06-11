@@ -1,1 +1,4 @@
 data/*
+!data/minimal/
+.DS_Store
+*.pyc
