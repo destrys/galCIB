@@ -57,7 +57,7 @@ prefact_gg = geo * wgalwgal
 prefact_gcib = geo * wcibwgal
 prefact_cibcib = geo * wcibwcib
 
-# interpolate ell values
+# interpolate ell values    
 ell_range = np.arange(consts.LMIN, consts.LMAX)
 ell_sampled = consts.ell
 ELL_sampled = np.logspace(np.log10(consts.LMIN), 
@@ -170,7 +170,7 @@ def pcl_binned(theta, cib_model, M,
     return pcl_combined
 
 def c_all(theta, cib_model, num_channels=3,
-          pz=None, mag_bias_alpha=None):
+          pz=None, mag_bias_alpha=None, gal_type = 'ELG'):
     """
     Returns C_gg, C_gCIB, C_CIBCIB.
     
@@ -201,15 +201,18 @@ def c_all(theta, cib_model, num_channels=3,
     hmalpha_cibcib = hmalpha[num_channels+1:] # pass to cibcrosscib; 4: for default 3 channels
     hmalpha_cibcib = hmalpha_cibcib[:,np.newaxis,np.newaxis]
     
-    shotnoise = theta[num_of_unique_Cls:2*num_of_unique_Cls-1] # gx{CIB}, {CIB_low X CIB_high}
+    # gx{CIB}, {CIB_low X CIB_high}; 9 values for default 3 channels
+    shotnoise = theta[num_of_unique_Cls:2*num_of_unique_Cls-1] 
+    shotnoise = 10**shotnoise # convert log-value to proper value
     shotnoise_gcib = shotnoise[:num_channels]
+    shotnoise_gcib = shotnoise_gcib 
     shotnoise_cibcib = shotnoise[num_channels:]
 
     start_of_physical_params = 2*num_of_unique_Cls-1
-    gal_params = theta[start_of_physical_params:start_of_physical_params+4] # Ncen (4): gamma, log10Mc, sigmaM, Ac
+    gal_params = theta[start_of_physical_params:start_of_physical_params+8] # Ncen (4): gamma, log10Mc, sigmaM, Ac
                            # Nsat (4): As, M0, M1, alpha
-    prof_params = theta[start_of_physical_params+4:start_of_physical_params+4+3] # fexp, tau, lambda_NFW
-    cib_params = theta[start_of_physical_params+4+3:] # SFR (6): etamax (only for M23) or L0 (only for Y23), mu_peak0, mu_peakp, sigma_M0, tau, zc
+    prof_params = theta[start_of_physical_params+8:start_of_physical_params+8+3] # fexp, tau, lambda_NFW
+    cib_params = theta[start_of_physical_params+8+3:] # SFR (6): etamax (only for M23) or L0 (only for Y23), mu_peak0, mu_peakp, sigma_M0, tau, zc
                        # SED (3): beta, T0, alpha (only for Y23)
 
     # uprof
@@ -218,7 +221,7 @@ def c_all(theta, cib_model, num_channels=3,
     
     # galterm, cibterm, nbar_halo
     galterm, Nc, Nsat = gal.galterm(gal_params, uprof, 
-                                    gal_type = 'ELG')
+                                    gal_type = gal_type)
     cibterm, djc, djsub = cib.cibterm(cib_params, uprof, cib_model)
     nbar_halo = gal.nbargal_halo(Nc, Nsat, hmfzT)
     c_gg = galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo, Nc,
@@ -226,7 +229,7 @@ def c_all(theta, cib_model, num_channels=3,
     c_gcib = cibcrossgal_cell_tot(hmalpha_gcib, galterm, cibterm, shotnoise_gcib,
                                   pz=pz,mag_bias_alpha=mag_bias_alpha)
     c_cibcib = cibcrosscib_cell_tot(hmalpha_cibcib, cibterm,
-                                    djc, djsub, uprof, shotnoise_cibcib)
+                                    djc, djsub, uprof, shotnoise_cibcib,nnu=num_channels)
 
     # color correction
     c_gcib = c_gcib * cc[:,np.newaxis]
@@ -333,7 +336,7 @@ def galcrossgal_cell_tot(hmalpha_gg, galterm, nbar_halo,
     Args:
         pz : binned galaxy redshift distribution density function 
     """
-    #print(f'prefact = {prefact_gg}')
+
     p2h = galcrossgal_pk_2h(galterm, nbar_halo)
     p1h = galcrossgal_pk_1h(galterm, nbar_halo, Nc)
     
@@ -413,12 +416,12 @@ def galcrossgal_pk_1h(galterm, nbar_halo, ncen):
     
     return p1h
     
-def galcrossgal_cell_2h(ncen, nsat, galterm):
+def galcrossgal_cell_2h(galterm, nbar_halo):
     """
     Returns the 2-halo term of C_gg.
     """
     
-    p2h = galcrossgal_pk_2h(ncen, nsat, galterm)[0]
+    p2h = galcrossgal_pk_2h(galterm, nbar_halo)[0]
     integrand = geo * wgalwgal * p2h
     
     c_2h = simpson(integrand,x=consts.Plin['z'],axis=-1)
@@ -440,7 +443,7 @@ def galcrossgal_cell_1h(ncen, nsat, galterm):
 ###--C_CIB,CIB--###
 def cibcrosscib_cell_tot(hmalpha_cibcib, cibterm, 
                          djc, djsub, uprof, 
-                         shotnoise):
+                         shotnoise, nnu=3):
     """
     Returns the total CIB X CIB for all the nus.
     
@@ -457,11 +460,11 @@ def cibcrosscib_cell_tot(hmalpha_cibcib, cibterm,
             (nu,nu',1) where last axis corresponds to ell. 
             Note that the matrix must be symmetric because Pk is invariant under
             nu <-> nu' transformation.
+        nnu : (int) number of CIB frequencies    
         
     Returns:
         c_ell : of shape (nu, nu', ell) in UNITS OF mJy^2/sr
     """
-    nnu = 6 # number of frequencies
     
     # store C_ell
     c_ell = np.zeros((nnu, nnu, len(consts.ell)))

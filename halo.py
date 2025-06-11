@@ -79,18 +79,15 @@ def nfwfourier_u(lambda_NFW, rad200, c, c_term):
         lambda_NFW : rescaling factor of rs
     """
     
-    #rs_original = rad200 # (Mh, z)
     rs_original = r_star(rad200, c)
     rs_rescaled = r_star(rad200/lambda_NFW, c) #FIXME: does concentration change with rescaling?
-    #c = nu_to_c200c(rad, dlnpk_dlnk) # (Mh, z)
-    #c_term = ampl_nfw(c) # (Mh, z)
     #FIXME: calculate q a priori and just divide by lambda to get q_rescaled
     q = kk[:, np.newaxis, :] * rs_rescaled[np.newaxis,:,:] # (k, Mh, z)
     
     # broadcast to match q
     c = np.expand_dims(c, axis = 0) #FIXME: calculate c*q and only divide by lambda to get c*q rescaled
     c_term = np.expand_dims(c_term, axis = 0) 
-    tst = q + c*q
+    # tst = q + c*q
     
     Si_qcq, Ci_qcq = sine_cosine_int(q + c*q) # (k, Mh, z)
     Si_q, Ci_q = sine_cosine_int(q) # (k, Mh, z)
@@ -101,6 +98,7 @@ def nfwfourier_u(lambda_NFW, rad200, c, c_term):
     
     unfw = c_term *(cos_q_term + sin_q_term - sin_qc_term) # (k, Mh, z)
     
+    # return 0
     return unfw
 
 def ampl_nfw(c):
@@ -226,9 +224,9 @@ def sigma(rad):
     of \Delta = 200 to calculate the radius.
     
     Args:
-        rad: radius of variance size #FIXME: Unit?
+        rad: radius of variance size
     Returns:
-        res: Variance at size of radius rad shape (Mh, z)
+        res: RMS at size of radius rad shape (Mh, z)
     """
 
     # need the full Pk to get the proper numerical integration 
@@ -247,7 +245,7 @@ def sigma(rad):
                                     axis=0) # integrating along kk
     res = np.sqrt(sigm)
 
-    return res
+    return res#, rk
 
 # DONE
 def W(rk):
@@ -316,16 +314,18 @@ def get_dlnpk_dlnk():
     Returns:
         res : (Mh, z)
     """
+    pk_all = consts.Plin['pk']
+    k_all = consts.Plin['k']
+    grad = np.zeros((len(pk_all),len(k_all))) # shape (z,k)
     
-    grad = np.zeros_like(power) # shape (k, z)
-    grad[:-1,:] = np.diff(np.log(power),axis=0) / np.diff(np.log(kk),axis=0)
+    grad[:,:-1] = np.diff(np.log(pk_all),axis=1) / np.diff(np.log(k_all),axis=0)
     #FIXME: is this not just copying the last value again? 
-    grad[-1,:] = (np.log(power[-1,:]) - np.log(power[-2,:]))/(np.log(kk[-1,:]) - np.log(kk[-2,:]))
+    grad[:,-1] = (np.log(pk_all[:,-1]) - np.log(pk_all[:,-2]))/(np.log(k_all[-1]) - np.log(k_all[-2]))
     kr = consts.k_R # (Mh,)
     
-    res = np.zeros((len(kr), power.shape[1])) # shape(Mh, z)
-    for i in range(power.shape[1]): # loop over redshift
-        res[:,i] = np.interp(kr, kk[:,i], grad[:,i])
+    res = np.zeros((len(kr), pk_all.shape[0])) # shape(Mh, z)
+    for i in range(pk_all.shape[0]): # loop over redshift
+        res[:,i] = np.interp(kr, k_all, grad[i,:])
     
     return res
 

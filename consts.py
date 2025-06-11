@@ -17,7 +17,7 @@ import glob
 NSIDE = 1024 #FIXME: current galaxy windows are at 1024 
 LMAX = 3*NSIDE - 1
 LMIN = 0
-ell = np.linspace(LMIN, LMAX, 99)
+ell = np.linspace(LMIN, LMAX, 199)
 
 # global variables 
 speed_of_light = apconst.c # in ms^-1
@@ -46,18 +46,18 @@ H0 = planck.H0
 
 # linear power spectrum
 #with open('data/plin_unit_h.p', 'rb') as handle:
-with open('data/plin_unit_Mpc.p', 'rb') as handle:
+with open('/Users/tkarim/research/galCIB/data/plin_unit_Mpc.p', 'rb') as handle:
     Plin = pickle.load(handle)
 
 # halo mass function from colossus
-with open('data/hmfz_h.p', 'rb') as handle:
+with open('/Users/tkarim/research/galCIB/data/hmfz_h.p', 'rb') as handle:
     hmfz_dict = pickle.load(handle)
 Mh_Msol = hmfz_dict['M_Msol_h']/planck.h # units of Msol
 log10Mh = np.log10(Mh_Msol)
 hmfz = hmfz_dict['hmfz_log10M'] # units of (Mpc)^-3
 
 # useful cosmology arrays to precalculate
-chi_list = planck.comoving_distance(Plin['z']) # comoving distances
+chi_list = planck.comoving_distance(Plin['z']) # comoving distances in Mpc
 Hz_list = planck.H(Plin['z']) # H(z)
 Omegab_to_OmegaM_over_z = planck.Ob(Plin['z'])/planck.Om(Plin['z'])
 rho_crit = (planck.critical_density(Plin['z'])).to(u.Msun/u.Mpc**3).value # units of Msol/Mpc^3
@@ -94,9 +94,11 @@ Mhc_Msol = Mh_Msol * (1 - fsub)
 log10ms_min = 5 # Msun according to pg 11 of 2310.10848 
 num_points = 120 # number of subhalo masses sampled for given Mh
 ms_Msol = np.logspace(log10ms_min, np.log10(Mhc_Msol), num_points) # units of Msol
+#ms_Msol = np.logspace(log10ms_min, np.log10(Mh_Msol), num_points) # units of Msol
 
 # ratio of ms to Mhc, needed in SFRsub calculation.
 ms_to_Mhc_Msol = ms_Msol/np.expand_dims(Mhc_Msol, axis = 0) 
+#ms_to_Mh_Msol = ms_Msol/np.expand_dims(Mh_Msol, axis = 0) 
 
 # subhalo mass function
 # based on 10 of 0909.1325.
@@ -121,7 +123,7 @@ dict_gal = {}
 # dict with ELG properties based on Karim et al. 2024
 dict_gal['ELG'] = {}
 
-with open('data/gal/dndz_extended.p', 'rb') as handle:
+with open('/Users/tkarim/research/galCIB/data/gal/dndz_extended.p', 'rb') as handle:
     dndz_ELG = pickle.load(handle)
     
 # read in original data
@@ -199,7 +201,7 @@ bar_c = BAR(Mhc_Msol, Plin['z']) # shape (Mh, z)
 bar_sub = BAR(ms_Msol, Plin['z']) #shape (ms, Mh, z)
 
 ###--Precalculate S_eff for M21---###
-snuaddr = 'data/filtered_snu_planck.fits'
+snuaddr = '/Users/tkarim/research/galCIB/data/filtered_snu_planck.fits'
 hdulist = fits.open(snuaddr)
 redshifts_M23 = hdulist[1].data
 snu_eff_M23 = hdulist[0].data[3:-1, :]  # in Jy/Lsun  # -1 because we are
@@ -207,7 +209,7 @@ snu_eff_M23 = hdulist[0].data[3:-1, :]  # in Jy/Lsun  # -1 because we are
 # also removing first three Planck channels since Lenz 19 does not have those
 hdulist.close()
 
-wavelengths = np.loadtxt('../DopplerCIB/data_files/TXT_TABLES_2015/EffectiveSED_B15_z0.012.txt')[:, [0]]
+wavelengths = np.loadtxt('/Users/tkarim/research/DopplerCIB/data_files/TXT_TABLES_2015/EffectiveSED_B15_z0.012.txt')[:, [0]]
 # the above wavelengths are in microns
 freq = speed_of_light.to(u.km/u.s).value/wavelengths
 # c_light is in Km/s, wavelength is in microns and we would like to
@@ -219,7 +221,7 @@ freqhz = freq*1e3*1e6
 freq *= numerical_fac
 freq_rest = freqhz*(1+redshifts_M23)
 
-list_of_files = sorted(glob.glob('../DopplerCIB/data_files/TXT_TABLES_2015/./*.txt'))
+list_of_files = sorted(glob.glob('/Users/tkarim/research/DopplerCIB/data_files/TXT_TABLES_2015/./*.txt'))
 a = list_of_files[95]
 b = list_of_files[96]
 for i in range(95, 208):
@@ -288,8 +290,7 @@ nu_primes = nu_grid[:, np.newaxis] * (1 + redshifts_M23[np.newaxis, :]) # match 
 chi_cib = planck.comoving_distance(redshifts_M23).value # in Mpc
 
 # Lagrangian radius of a dark matter halo
-#FIXME: Mh is in units of little h
-mass_to_radius = (3*(Mhc_Msol)/(4*np.pi*mean_density0))**(1/3) # units of Mpc, shape (Mh,)
+mass_to_radius = (3*(Mh_Msol)/(4*np.pi*mean_density0))**(1/3) # units of Mpc, shape (Mh,)
 
 def get_k_R():
     """

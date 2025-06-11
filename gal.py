@@ -137,13 +137,17 @@ def Nsat(hod_params, gal_type):
         Eqn 2.11 from 2310.10848
         
         Nsat(M) = Nc(M) * Heaviside(M-M0) * ((M - M0)/M1)**alpha_s
+        
+        # note that M0 is fixed to 10^6 Msol in the UNWISE X CIB paper (private comm. with Ziang Yan)
         """
         
-        nc_hod_params, M0_params, M1_params, alpha_s = hod_params 
+        #nc_hod_params, M0_params, M1_params, alpha_s = hod_params 
+        nc_hod_params, M1_params, alpha_s = hod_params 
         Nc_M = Ncen(nc_hod_params, gal_type=gal_type)
         
-        M0 = 10**z_evolution_model(M0_params)
+        #M0 = 10**z_evolution_model(M0_params)
         M1 = 10**z_evolution_model(M1_params)
+        M0 = 1e6
         
         M_M0 = Mh - M0
         heaviside_term = np.heaviside(x1 = M_M0, x2 = 1)

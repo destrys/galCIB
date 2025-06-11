@@ -25,7 +25,6 @@ concentration = h.nu_to_c200c(rad200, dlnpk_dlnk)
 # amplitude param
 concentration_amp = h.ampl_nfw(concentration)
 
-
 ##--RADIAL KERNEL--##
 z_all = consts.Plin['z']
 w_cib = cib.get_W_cib(z_cib=z_all)

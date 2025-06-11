@@ -18,7 +18,7 @@ from colossus.lss import mass_function
 #z_all = np.arange(0.05, 10.22, 0.1)
 
 #FIXME: run it only for comparison with DopplerCIB
-z_all = np.loadtxt('/Users/tkarim/Documents/research/DopplerCIB/data_files/redshifts.txt')
+z_all = np.loadtxt('../DopplerCIB/data_files/redshifts.txt')
 print(z_all.shape)
 
 # k range covering up to k_max = 10

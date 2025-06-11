@@ -36,13 +36,14 @@ Mh = consts.Mh_Msol
 Mhc = consts.Mhc_Msol # central galaxies halo mass based on fsub
 ms = consts.ms_Msol # subhalo mass grid based on fsub
 ms_to_Mhc = consts.ms_to_Mhc_Msol # subhalo mass grid as a fraction with Mhc
+#ms_to_Mh = consts.ms_to_Mh_Msol # subhalo mass grid as a fraction with Mhc
 hmfz = consts.hmfz # halo mass function
 subhalomf = consts.subhalomf # subhalo mass function
 log10ms = np.expand_dims(np.log10(ms), axis = -1)
 
 # survey constants
 z = consts.Plin['z']
-chi = consts.chi_list.value
+chi = consts.chi_list
 
 # galaxy constants
 # dict_gal = consts.dict_gal['ELG']
@@ -443,9 +444,9 @@ def SFRc(params, model):
         IR_hod_params = (Mmin_IR, IR_sigma_lnM)
         sfr = SFR(etamax, mu_peak0, mu_peakp, 
                   sigma_M0, tau, zc)
-        mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')[:,np.newaxis] #FIXME: only if no z evolution model of N_c
-        #print("you set meanIR to 1 by hand for testing.")
-        #mean_N_IR_c = 1 #FIXME: only to match M21 
+        #mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')[:,np.newaxis] #FIXME: only if no z evolution model of N_c
+        print("you set meanIR to 1 by hand for testing.")
+        mean_N_IR_c = 1 #FIXME: only to match M21 
         sfrc = sfr * mean_N_IR_c
 
     elif model == 'Y23':
