@@ -2,3 +2,6 @@ data/*
 !data/minimal/
 .DS_Store
 *.pyc
+__pycache__/*
+.ipynb_checkpoints/*
+cib.nosync.code-workspace
