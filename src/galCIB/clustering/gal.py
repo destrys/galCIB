@@ -274,7 +274,7 @@ def galterm(params, u, gal_type = 'ELG'):
     params_Ns = params[4:8]
     
     Nc = Ncen(params_Nc, gal_type = gal_type) # (Mh,)
-    Ns = Nsat(params_Ns) # (Mh,)
+    Ns = Nsat(params_Ns, gal_type=gal_type) # (Mh,)
     
     res = Nc[np.newaxis, :, np.newaxis] + Ns[np.newaxis, :, np.newaxis] * u
     
