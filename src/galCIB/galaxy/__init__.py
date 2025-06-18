@@ -1,4 +1,4 @@
-from .model import HODModel
+from .hodmodel import HODModel
 from .registry import get_hod_model
 from . import default_models  # Automatically registers defaults on import
 

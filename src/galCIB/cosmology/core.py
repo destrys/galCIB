@@ -29,6 +29,7 @@ class Cosmology:
         self.z = zs
         self.k = ks
         self.Mh = Mh
+        self.log10Mh = np.log10(Mh)
         self.use_little_h = use_little_h
         
         self.pk_grid, self.hmf_grid, self.cosmo = self._load_colossus()
@@ -103,8 +104,16 @@ class Cosmology:
         # Omega_M(z = 0)
         self.Om0 = self.cosmo.Om0 
         
-        # speed of light in km/s 
+        # Omega_Lambda(z = 0)
+        self.Ode0 = self.cosmo.Ode0
         
+        # Omega_b
+        self.Ob_z = self.cosmo.Ob(self.z)
+        
+        # Omega_M
+        self.Om_z = self.cosmo.Om(self.z)
+        
+        # speed of light in km/s 
         self.c = 299792.458  # km/s
          
     def _calculate_chi(self):

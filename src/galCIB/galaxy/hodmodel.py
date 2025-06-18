@@ -1,9 +1,7 @@
 """
-This sets up the Galaxy class that calculates relevant properties such as 
+This sets up the galaxy HOD class that calculates relevant properties such as 
 HOD models. It has a few default HOD models and can also take user-defined models. 
 """
-
-# models.py
 
 class HODModel:
     """
@@ -36,9 +34,10 @@ class HODModel:
                                **kwargs)
 
     def evaluate(self, theta_cen, theta_sat, log10Mh, z=None):
-        """Evaluate both N_cen and N_sat for given halo mass and redshift grids."""
-        ncen_vals = self.ncen(theta_cen, log10Mh, z)
-        nsat_vals = self.nsat(theta_sat, log10Mh, z, ncen=ncen_vals)
+        """Evaluate both N_cen and N_sat for given halo mass 
+        and redshift grids."""
+        ncen_vals = self.ncen(log10Mh, theta_cen, z)
+        nsat_vals = self.nsat(log10Mh, theta_sat, z, ncen=ncen_vals)
         return {
             "N_cen": ncen_vals,
             "N_sat": nsat_vals

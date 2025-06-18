@@ -10,6 +10,7 @@ from .window import compute_Wcib, compute_Wg
 class Survey:
     def __init__(self, z, pz, mag_alpha, name=None):
         self.z = z
+        self.z_ratio = z/(1+z)
         self.pz = pz
         self.mag_alpha = self._standardize_mag_alpha(mag_alpha)
         self.name = name or "unnamed"
