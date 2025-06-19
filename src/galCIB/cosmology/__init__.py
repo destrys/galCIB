@@ -1,1 +1,1 @@
-from .core import Cosmology
+from .cosmology import Cosmology
