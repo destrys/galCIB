@@ -1,11 +1,13 @@
+#cib/utils.py
+
 import numpy as np
 
-def compute_BAR_grid(M, z, cosmo):
+def compute_BAR_grid(cosmo):
     """
     Compute the Baryon Accretion Rate (BAR) grid.
     """
-    M = np.atleast_1d(M)
-    z = np.atleast_1d(z)
+    M = cosmo.Mh[:,np.newaxis] # (Nm,Nz)
+    z = cosmo.z[np.newaxis,:] # (Nm,Nz)
 
     Om0 = cosmo.Om0 
     Ode0 = cosmo.Ode0
