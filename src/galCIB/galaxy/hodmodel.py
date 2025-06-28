@@ -55,12 +55,12 @@ class HODModel:
         else:
             return self._nsat_fn(M_input, theta_sat, **kwargs)
 
-    def evaluate(self, theta_cen, theta_sat, log10Mh, z=None):
-        """Evaluate both N_cen and N_sat for given halo mass 
-        and redshift grids."""
-        ncen_vals = self.ncen(log10Mh, theta_cen, z)
-        nsat_vals = self.nsat(log10Mh, theta_sat, z, ncen=ncen_vals)
-        return {
-            "N_cen": ncen_vals,
-            "N_sat": nsat_vals
-        }
+    # def evaluate(self, theta_cen, theta_sat, log10Mh, z=None):
+    #     """Evaluate both N_cen and N_sat for given halo mass 
+    #     and redshift grids."""
+    #     ncen_vals = self.ncen(log10Mh, theta_cen, z)
+    #     nsat_vals = self.nsat(log10Mh, theta_sat, z, ncen=ncen_vals)
+    #     return {
+    #         "N_cen": ncen_vals,
+    #         "N_sat": nsat_vals
+    #     }

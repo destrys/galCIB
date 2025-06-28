@@ -1,8 +1,28 @@
 #cib/utils.py
 
 import numpy as np
-# Lambert W function solver for Y23 pivot frequency
-from scipy.special import lambertw
+from scipy.integrate import simpson
+
+def SED_to_flux(sed, freq_sed, freq_filt, filt_response):
+    """
+    Returns the predicted flux per Planck channel of a given SED.
+    
+    Args:
+        sed : (Nz, Nwv) array of SEDs
+        wv_sed : (Nz, Nwv) array of wavelength grids for each SED
+        fwv : (Nfwv,) common wavelength grid for filter response
+        fresponse : (Nfwv,) filter response curve
+    """
+    # Ensure sed is 2D: (Nz, Nwv)
+    sed = np.atleast_2d(sed)
+
+    # Normalize the response curve
+    norm = simpson(filt_response, x=freq_filt)
+
+    # Interpolate and integrate in one list comprehension
+    flux = np.array([simpson(np.interp(freq_filt, w_row, s_row, left=0.0, right=0.0) * filt_response, x=freq_filt) for w_row, s_row in zip(freq_sed, sed)])
+
+    return flux / norm
 
 def compute_BAR_grid(cosmo):
     """
