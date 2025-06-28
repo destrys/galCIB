@@ -5,12 +5,22 @@ Y23 : Parametric model inspired by S12.
 """
 
 import numpy as np 
+from astropy.io import fits
+import glob
+
 from .registry import register_snu_model 
 from scipy.special import lambertw
+from scipy.interpolate import RectBivariateSpline
 
 from scipy.constants import h, k, c  # Planck and Boltzmann in SI
 kB_over_h = k/h # for nu0z 
 h_over_kB = h/k 
+
+MPC_TO_M = 3.085677581e22  # meters
+WATT_TO_JY = 1e26          # Jy
+L_SUN = 3.828e26           # watts
+
+###--PARAMETRIC MODEL BASED ON Y23--###
 
 def snu_Y23_factory(nu_prime, z):
     """
@@ -139,97 +149,101 @@ def _compute_B_nu(nu, Td, prefact):
     
     return res
 
-def register_default_snu_models():
-    register_snu_model("Y23", snu_Y23_factory)       
+###--NON-PARAMETRIC SED MODEL BASED ON M21--###    
 
-# def snu_M21(nu0, z, path_to_data_file):
-#     """
-#     Non-parametric SED model based on M21. 
+def _fix_planck_file_list(file_list):
+    """Fix column alignment issue as in the Planck SED files."""
+    a, b = file_list[95], file_list[96]
+    for i in range(95, 208):
+        file_list[i] = file_list[i + 2]
+    file_list[208] = a
+    file_list[209] = b
+    return file_list
 
-#     Args:
-#         nu : array-like
-#             Frequencies (CIB channels).
-#         z : array-like
-#             Redshift grid.
+def _load_raw_planck_seds(data_dir):
+    # Load redshifts from Planck FITS file
+    redshift_path = f"{data_dir}/filtered_snu_planck.fits"
+    with fits.open(redshift_path) as hdulist:
+        redshifts = hdulist[1].data
 
-#     Returns:
-#         ndarray of shape (len(nu), len(z)) representing SED values.
-#     """
+    # Load wavelength array (assumed to be in microns)
+    wave_micron = np.loadtxt(
+        f"{data_dir}TXT_TABLES_2015/EffectiveSED_B15_z0.012.txt"
+    )[:, [0]]
     
-#     fname = path_to_data_file
+    # Convert to frequency in Hz
+    freq = c * 1e6 / wave_micron#[:, 0]  # m/s × 1e6 to convert μm to m
+
+    # Load SED data files
+    file_list = sorted(glob.glob(f"{data_dir}/TXT_TABLES_2015/*.txt"))
+    file_list = _fix_planck_file_list(file_list) # fix column issue
+    seds = np.stack([np.loadtxt(f)[:, 1] for f in file_list], axis=1)  # (Nfreq, Nz)
+
+    return freq[::-1], redshifts, seds[::-1, :]  # Reversing to match increasing freq
+
+
+def _compute_L_IR(seds, freqs, z_planck, cosmo):
+    """
+    Compute total IR luminosity from SED using interpolation and integration.
     
-#     snuaddr = f'{fname}/filtered_snu_planck.fits'
-#     hdulist = fits.open(snuaddr)
-#     redshifts_M21 = hdulist[1].data # read in Planck redshifts
-#     hdulist.close()
-
-#     # wavelengths in microns
-#     wavelengths = np.loadtxt(f'{fname}/TXT_TABLES_2015/EffectiveSED_B15_z0.012.txt')[:,[0]]
-
-#     # convert wavelengths to frequency 
-#     c_light = 299792.458 # km/s
-#     freq = 299792.458/wavelengths
+    Args:
+        seds : SEDs measured by Planck in Jy/Lsun #FIXME: double check
+        freq : Frequency grid in Hz 
+        z_planck : Redshifts at which Planck measured seds 
+        cosmo : Cosmology object
+    Returns:
+        L_IR_vals : Interpolated IR luminosity (z,)
+    """
     
-#     # c_light is in Km/s, wavelength is in microns and we would like to
-#     # have frequency in GHz. So have to multiply by the following
-#     # numerical factor which comes out to be 1
-#     # numerical_fac = 1e3*1e6/1e9
-#     numerical_fac = 1.
-#     freqhz = freq*1e3*1e6
-#     freq *= numerical_fac
-#     freq_rest = freqhz*(1+redshifts_M21)
+    fmin, fmax = 2.998e11, 3.747e13  # Hz: 1000 μm to 8 μm
+    fint = np.logspace(np.log10(fmin), np.log10(fmax), 10000)
 
-#     # read in all the Planck SEDs as a function of redshift
-#     import glob
-#     list_of_files = sorted(glob.glob(f'{fname}/TXT_TABLES_2015/./*.txt'))
-#     a = list_of_files[95]
-#     b = list_of_files[96]
-    
-#     # column adjustment issue fix
-#     for i in range(95, 208):
-#         list_of_files[i] = list_of_files[i+2]
-#     list_of_files[208] = a
-#     list_of_files[209] = b
-
-#     Mpc_to_m = 3.086e22  # Mpc to m
-#     L_sun = 3.828e26
-#     w_jy = 1e26  # Watt to Jy
-
-#     def L_IR(snu_eff, freq_rest, redshifts):
-#         # freq_rest *= ghz  # GHz to Hz
-#         fmax = 3.7474057250000e13  # 8 micros in Hz
-#         fmin = 2.99792458000e11  # 1000 microns in Hz
-#         no = 10000
-#         fint = np.linspace(np.log10(fmin), np.log10(fmax), no)
-#         L_IR_eff = np.zeros((len(redshifts)))
-#         dfeq = np.array([0.]*no, dtype=float)
+    L_IR_vals = np.zeros(len(z_planck))
+    for i, z in enumerate(z_planck):
         
-#         for i in range(len(redshifts)):
-#             L_feq = snu_eff[:, i]*4*np.pi*(Mpc_to_m*planck.luminosity_distance(redshifts[i]).value)**2/(w_jy*(1+redshifts[i]))
-#             Lint = np.interp(fint, np.log10(np.sort(freq_rest[:, i])),
-#                                 L_feq[::-1])
-#             dfeq = 10**(fint)
-#             L_IR_eff[i] = np.trapz(Lint, dfeq)
-#         return L_IR_eff
+        # convert dL from units of Mpc/h to metre
+        dL = (cosmo.cosmo.luminosity_distance(z)/cosmo.h) * MPC_TO_M
+        
+        L_nu = seds[:, i] * 4 * np.pi * dL**2 / ((1 + z) * WATT_TO_JY)
+        
+        # Interpolate from Planck grid to our grid
+        L_interp = np.interp(np.log10(fint), np.log10(freqs), L_nu[::-1])
+        L_IR_vals[i] = np.trapz(L_interp, fint)
 
-#     n = np.size(wavelengths)
-#     snu_unfiltered = np.zeros([n, len(redshifts_M21)])
+    return L_IR_vals
 
-#     for i in range(len(list_of_files)):
-#         snu_unfiltered[:, i] = np.loadtxt(list_of_files[i])[:, 1]
-#     L_IR15 = L_IR(snu_unfiltered, freq_rest, redshifts_M21)
-
-#     for i in range(len(list_of_files)):
-#         snu_unfiltered[:, i] = snu_unfiltered[:, i]*L_sun/L_IR15[i]
-
-#     # Currently unfiltered snus are ordered in increasing wavelengths,
-#     # we re-arrange them in increasing frequencies i.e. invert it
-#     freq = freq[::-1]
-#     snu_unfiltered = snu_unfiltered[::-1]
-
-#     from scipy.interpolate import RectBivariateSpline
-#     unfiltered_snu = RectBivariateSpline(freq, redshifts_M21,
-#                                         snu_unfiltered)
-#     snu_eff_z = unfiltered_snu(nu0, z)
+def snu_M21_factory(data_dir="../data/"):
+    """
+    Factory function that returns a callable S_nu(theta, z)
+    using precomputed non-parametric SEDs from Planck (M21).
     
-#     return snu_eff_z
+    Returns:
+        snu_M21(theta_snu) callable
+    """
+    freq, z_grid, raw_seds = _load_raw_planck_seds(data_dir)
+    L_IR_vals = _compute_L_IR(raw_seds, freq, z_grid)
+
+    # Normalize SEDs to total IR luminosity
+    seds_normed = raw_seds * L_SUN / L_IR_vals[np.newaxis, :]
+
+    # Interpolator in frequency [Hz] and redshift
+    interpolator = RectBivariateSpline(freq, z_grid, seds_normed)
+
+    def snu_M21(theta_unused, nu, z):
+        """
+        Evaluates the SED model for given nu and z.
+        
+        Args:
+            theta_unused: placeholder for interface compatibility
+            nu : frequency array (Hz)
+            z  : redshift array
+        Returns:
+            SED of shape (len(nu), len(z))
+        """
+        return interpolator(nu, z)
+
+    return snu_M21
+
+def register_default_snu_models():
+    register_snu_model("Y23", snu_Y23_factory)
+    register_snu_model("M21", snu_M21_factory)

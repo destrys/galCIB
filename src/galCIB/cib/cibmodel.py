@@ -28,9 +28,9 @@ class CIBModel:
         True -> Use user-specified filters, False -> use unfiltered Snu
     """
     
-    def __init__(self, sfr_fn=None, snu_fn=None,
+    def __init__(self, sfr_fn=None, snu_fn=None, snu_model_name = "Y23",
                  hod=None, cosmo=None, nu_prime=None, 
-                 filtered=True, filter_files=None):
+                 filtered=True, filter_files=None, data_dir="../data/"):
         
         self.hod = hod
         self.cosmo = cosmo
@@ -46,30 +46,42 @@ class CIBModel:
         KC = 1.0e-10  # Kennicutt constant for Chabrier IMF in units of Msol * yr^-1 * Lsol^-1
         self.geom_prefact_over_KC = self.geom_prefact/KC
         
-        # Load default SFR model if none provided
+        # Pre-register defaults once
+        _lazy_register_defaults()
+
+        # Setup SFR function
         if sfr_fn is None:
-            # Precompute BAR grid 
             self.BAR_grid = compute_BAR_grid(self.cosmo)
-            
-            _lazy_register_defaults()  # Ensures registry is populated
             sfr_factory = get_sfr_model("M21")
             self._sfr_fn = sfr_factory(self.BAR_grid, self.z_ratio)
         else:
             self._sfr_fn = sfr_fn
-        
-        # Load default Snu model if none provided
-        if snu_fn is None:
-            _lazy_register_defaults()
-            snu_factory = get_snu_model("Y23")
-            self._snu_fn = snu_factory(self.nu_prime, self.cosmo.z)  # <-- factory CALL
+            
+        # Setup Snu function and filtered flag
+        if snu_fn is None or isinstance(snu_fn, str):
+            # Determine the model name
+            snu_model = snu_fn if isinstance(snu_fn, str) else snu_model_name
+            
+            snu_factory = get_snu_model(snu_model)
+            
+            if snu_model == "Y23":
+                nu_prime_grid = self._generate_nu_prime_grid()
+                self._snu_fn = snu_factory(nu_prime_grid, self.cosmo.z)
+                self.filtered = True if filtered is None else filtered
+                
+            elif snu_model == "M21":
+                if data_dir is None:
+                    raise ValueError("Must specify `data_dir` for M21 SED model.")
+                self._snu_fn = snu_factory(data_dir)
+                self.filtered = False if filtered is None else filtered
+                
+            else:
+                raise ValueError(f"Unknown snu model name '{snu_model}'")
+                
         else:
+            # snu_fn is a callable provided by user
             self._snu_fn = snu_fn
-        
-        # Load filters if needed
-        if self.filtered and self.filter_files is not None:
-            self.filters = self._load_filters()
-        else:
-            self.filters = None
+            self.filtered = False if filtered is None else filtered
         
     def compute_sfr(self, theta_sfr):
         return self._sfr_fn(self.cosmo.Mh_grid[0],
