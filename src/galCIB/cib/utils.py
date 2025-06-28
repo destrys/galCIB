@@ -1,6 +1,8 @@
 #cib/utils.py
 
 import numpy as np
+# Lambert W function solver for Y23 pivot frequency
+from scipy.special import lambertw
 
 def compute_BAR_grid(cosmo):
     """

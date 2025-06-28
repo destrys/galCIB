@@ -3,9 +3,11 @@ This sets up the CIB model class that can take user-defined SFR and Snu
 models. It has the M21 and Y23 models implemented as defaults. 
 """
 
+import numpy as np 
 #simport inspect 
 from .utils import compute_BAR_grid
 from .registry import get_sfr_model, _lazy_register_defaults
+from scipy import constants as spconst
 
 class CIBModel:
     """
@@ -21,14 +23,19 @@ class CIBModel:
         Function that returns effective SED given M, z, and theta.
     cosmo : object 
         Providing cosmology-dependent quantities
+    nu_prime : array
+        If parametric S_nu model, what nu' = nu*(1+z) to sample SED over
     """
     
     def __init__(self, sfr_fn=None, snu_fn=None,
-                 hod=None, cosmo=None):
+                 hod=None, cosmo=None, nu_prime=None):
         
-        self.hod = hod      # galaxy HODModel for SFR_C 
+        self.hod = hod
         self.cosmo = cosmo
         self.z_ratio = self.hod.z_ratio # z/(1+z)
+        
+        if nu_prime is None: 
+            self.nu_prime = self._generate_nu_prime_grid()
         
         # Precompute geometric prefactor, A6 and A7 of 2204.05299
         self.geom_prefact = cosmo.chi**2 * (1 + cosmo.z)
@@ -48,8 +55,6 @@ class CIBModel:
         else:
             self._sfr_fn = sfr_fn
         
-        
-
     def compute_sfr(self, theta_sfr):
         return self._sfr_fn(self.cosmo.Mh_grid[0],
                             self.cosmo.z,
@@ -57,6 +62,20 @@ class CIBModel:
     
     def snu(self, theta_snu):
         return self._snu_fn(theta_snu)
+
+    def _generate_nu_prime_grid(self):
+        """
+        Returns nu' = nu*(1+z) grid in units of Hz. 
+        
+        Useful to pass to any parametric SED model that 
+        calculates SED as a function of nu. 
+        """
+        
+        ghz = 1e9 # Giga Hz conversion factor 
+        nu_grid =  np.linspace(1e2,4e3,10000)*ghz # sample 10,000 points from 100 to 1000 GHz
+        nu_prime_grid = nu_grid[:,np.newaxis] * (1+self.cosmo.z[np.newaxis,:])
+        
+        return nu_prime_grid
 
     # def djc(self, Mh, theta_sfr, theta_snu, theta_hod):
         

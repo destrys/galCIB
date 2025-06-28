@@ -32,5 +32,5 @@ def _lazy_register_defaults():
     if not _default_models_loaded:
         from . import default_sfr, default_snu
         default_sfr.register_default_sfr_models()
-        #default_snu.register_default_snu_models()
+        default_snu.register_default_snu_models()
         _default_models_loaded = True
