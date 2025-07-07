@@ -9,6 +9,9 @@ from .registry import (
 )
 
 from .cibmodel import CIBModel
+from .sfrmodel import SFRModel
+from .snumodel import SnuModel
+
 __all__ = ["get_sfr_model", "get_snu_model",
            "register_sfr_model", "register_snu_model",
-           "CIBModel"]
+           "CIBModel", "SFRModel", "SnuModel"]

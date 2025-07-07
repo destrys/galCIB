@@ -81,11 +81,14 @@ def Ncen(hod_params, gal_type):
         res = first_term * second_term
     
     elif gal_type == 'IR':
-        Mmin, IR_sigma_lnM = hod_params
-        #Mmin = z_evolution_model(hod_params) #FIXME: figure out if z evolving or not
-        erf_term = np.log(Mh/10**Mmin)/IR_sigma_lnM
-        res = 0.5 * (1 + ss.erf(erf_term)) 
+        Mmin0, Mminp, IR_sigma_lnM = hod_params
+        M_min_params = (Mmin0, Mminp)
+        Mmin_z = z_evolution_model(M_min_params)
+        #erf_term = np.log(Mh[:,np.newaxis]/10**Mmin_z[np.newaxis,:])/IR_sigma_lnM
+        erf_term = (np.log(Mh[:,np.newaxis]) - Mmin_z[np.newaxis,:] * np.log(10))/IR_sigma_lnM
         
+        res = 0.5 * (1 + ss.erf(erf_term)) 
+    
     elif gal_type == 'UNWISE':
         
         """
@@ -94,10 +97,12 @@ def Ncen(hod_params, gal_type):
         N_c(M) = 0.5 * (1 + erf (ln(M/M_min)/sigma_lnM))
         """
         
-        M_min_params, sigma_lnM = hod_params
+        #M_min_params, sigma_lnM = hod_params
+        mu_min0, mu_minp, sigma_lnM = hod_params
+        M_min_params = (mu_min0, mu_minp)
         M_min_z = z_evolution_model(M_min_params)
         
-        erf_term = (np.log(Mh) - M_min_z * np.log(10))/sigma_lnM
+        erf_term = (np.log(Mh[:,np.newaxis]) - M_min_z[np.newaxis,:] * np.log(10))/sigma_lnM
         res = 0.5 * (1 + ss.erf(erf_term))
         
     else:
@@ -142,7 +147,10 @@ def Nsat(hod_params, gal_type):
         """
         
         #nc_hod_params, M0_params, M1_params, alpha_s = hod_params 
-        nc_hod_params, M1_params, alpha_s = hod_params 
+        # Ncen components            # Nsat components
+        mu_min0, mu_minp, sigma_lnM, mu_10, mu_1p, alpha_s = hod_params
+        nc_hod_params = (mu_min0, mu_minp, sigma_lnM)
+        M1_params = (mu_10, mu_1p)
         Nc_M = Ncen(nc_hod_params, gal_type=gal_type)
         
         #M0 = 10**z_evolution_model(M0_params)
@@ -150,8 +158,8 @@ def Nsat(hod_params, gal_type):
         M0 = 1e6
         
         M_M0 = Mh - M0
-        heaviside_term = np.heaviside(x1 = M_M0, x2 = 1)
-        ratio_term = (M_M0/M1)**alpha_s
+        heaviside_term = np.heaviside(M_M0, 1)[:,np.newaxis]
+        ratio_term = (M_M0[:,np.newaxis]/M1[np.newaxis,:])**alpha_s
         
         res = Nc_M * heaviside_term * ratio_term       
         
@@ -270,12 +278,16 @@ def galterm(params, u, gal_type = 'ELG'):
         res : shape (k X Mh X z)
     """
     
-    params_Nc = params[:4]
-    params_Ns = params[4:8]
+    if gal_type == 'ELG':
+        params_Nc = params[:4]
+        params_Ns = params[4:8]
+    elif gal_type == 'UNWISE':
+        params_Nc = params[:3]
+        params_Ns = params
     
     Nc = Ncen(params_Nc, gal_type = gal_type) # (Mh,)
     Ns = Nsat(params_Ns, gal_type=gal_type) # (Mh,)
     
-    res = Nc[np.newaxis, :, np.newaxis] + Ns[np.newaxis, :, np.newaxis] * u
+    res = Nc[np.newaxis, :, :] + Ns[np.newaxis, :, :] * u
     
     return res, Nc, Ns

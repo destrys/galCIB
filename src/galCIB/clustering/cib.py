@@ -439,13 +439,22 @@ def SFRc(params, model):
     if model == 'M21':
         #SFR_c (Mh, z) = eta (Mh, z) * BAR (Mh, z)
         
-        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc, Mmin_IR, IR_sigma_lnM = params
-        IR_hod_params = (Mmin_IR, IR_sigma_lnM)
+        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc, Mmin_IR0, Mmin_IRp, IR_sigma_lnM = params
+        IR_hod_params = (Mmin_IR0, Mmin_IRp, IR_sigma_lnM)
         sfr = SFR(etamax, mu_peak0, mu_peakp, 
                   sigma_M0, tau, zc)
-        #mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')[:,np.newaxis] #FIXME: only if no z evolution model of N_c
-        print("you set meanIR to 1 by hand for testing.")
-        mean_N_IR_c = 1 #FIXME: only to match M21 
+        
+        mean_N_IR_c = gal.Ncen(IR_hod_params, gal_type='IR')#[:,np.newaxis] #FIXME: only if no z evolution model of N_c
+        
+        #mean_N_IR_c = 1 #FIXME: only to match M21 
+        
+        test = False
+        if test:
+            mean_N_IR_c = 1
+            print("you set meanIR to 1 by hand for testing.")
+        
+        
+        
         sfrc = sfr * mean_N_IR_c
 
     elif model == 'Y23':
@@ -473,7 +482,7 @@ def SFRsub(params, model):
         # from 2.41 of 2310.10848
         # SFRs (m|M) = min(SFR(m), m/M * SFR(M))
         
-        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc, _, _ = params
+        etamax, mu_peak0, mu_peakp, sigma_M0, tau, zc, _, _, _ = params
         
         option1 = SFR(etamax, mu_peak0, mu_peakp, 
                       sigma_M0, tau, zc,

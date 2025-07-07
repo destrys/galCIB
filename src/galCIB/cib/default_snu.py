@@ -1,3 +1,4 @@
+# cib/default_snu.py
 """
 Contains default S_nu models. 
 M21 : Non-parametric model from Planck.
@@ -202,17 +203,17 @@ def _compute_L_IR(seds, freqs, z_planck, cosmo):
     for i, z in enumerate(z_planck):
         
         # convert dL from units of Mpc/h to metre
-        dL = (cosmo.cosmo.luminosity_distance(z)/cosmo.h) * MPC_TO_M
+        dL = (cosmo.cosmo.luminosityDistance(z)/cosmo.cosmo.h) * MPC_TO_M
         
         L_nu = seds[:, i] * 4 * np.pi * dL**2 / ((1 + z) * WATT_TO_JY)
-        
         # Interpolate from Planck grid to our grid
-        L_interp = np.interp(np.log10(fint), np.log10(freqs), L_nu[::-1])
+        L_interp = np.interp(np.log10(fint), np.log10(freqs),
+                             L_nu[::-1])
         L_IR_vals[i] = np.trapz(L_interp, fint)
 
     return L_IR_vals
 
-def snu_M21_factory(data_dir="../data/"):
+def snu_M21_factory(cosmo, data_dir="../data/"):
     """
     Factory function that returns a callable S_nu(theta, z)
     using precomputed non-parametric SEDs from Planck (M21).
@@ -221,7 +222,7 @@ def snu_M21_factory(data_dir="../data/"):
         snu_M21(theta_snu) callable
     """
     freq, z_grid, raw_seds = _load_raw_planck_seds(data_dir)
-    L_IR_vals = _compute_L_IR(raw_seds, freq, z_grid)
+    L_IR_vals = _compute_L_IR(raw_seds, freq[:,0], z_grid, cosmo)
 
     # Normalize SEDs to total IR luminosity
     seds_normed = raw_seds * L_SUN / L_IR_vals[np.newaxis, :]
@@ -229,7 +230,7 @@ def snu_M21_factory(data_dir="../data/"):
     # Interpolator in frequency [Hz] and redshift
     interpolator = RectBivariateSpline(freq, z_grid, seds_normed)
 
-    def snu_M21(theta_unused, nu, z):
+    def snu_M21(theta_unused):
         """
         Evaluates the SED model for given nu and z.
         
@@ -240,6 +241,7 @@ def snu_M21_factory(data_dir="../data/"):
         Returns:
             SED of shape (len(nu), len(z))
         """
+        
         return interpolator(nu, z)
 
     return snu_M21

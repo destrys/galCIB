@@ -11,7 +11,7 @@ from colossus.lss import bias as clss_bias
 
 # import local modules
 from .. import consts
-from .. import cosmology
+from .cosmology import core
 
 # import halo consts
 Mh = consts.Mhc_Msol #FIXME: make sure passing the correct form, Mhc or Mh
@@ -336,7 +336,7 @@ def b_nu(nu, z):
     """
     
     # set cosmology for colossus
-    cc.setCurrent(cosmology.colossus_planck_cosmo)
+    cc.setCurrent(core.colossus_planck_cosmo)
     
     b = clss_bias.haloBiasFromNu(nu, z, mdef = '200m') # calculate bias for both ELG and CIB
     
