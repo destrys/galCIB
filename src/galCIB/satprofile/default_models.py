@@ -25,19 +25,17 @@ def compute_unfw(k, c, rs, lambda_NFW=1):
     """
     
     rs = rs/lambda_NFW # rescaling according to 2306.06319 Sec. below Eq. 7.7
-    q = k*rs/c 
-    cq = c*q 
+    q = k*rs
     one_plus_c = 1 + c 
     one_plus_c_times_q = one_plus_c*q
     
     Si_q, Ci_q = sici(q)
     Si_one_plus_c_times_q, Ci_one_plus_c_times_q = sici(one_plus_c_times_q)
     
-    
     prefact = 1/(np.log(one_plus_c) - c/(one_plus_c))
     first_term = np.cos(q) * (Ci_one_plus_c_times_q - Ci_q)
     second_term = np.sin(q) * (Si_one_plus_c_times_q - Si_q)
-    third_term = np.sin(cq)/(1+cq)
+    third_term = np.sin(c*q)/(q*one_plus_c)
     
     unfw = prefact * (first_term + second_term - third_term)
     

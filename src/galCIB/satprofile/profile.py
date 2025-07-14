@@ -41,7 +41,7 @@ class SatProfile:
 
         #Compute or load concentration and rstar parameters
         if c is None or rs is None:
-            self.c, self.rs, self.nu = self._cache_params()  # load relevant params 
+            self._cache_params()  # load relevant params 
         else:
             self.c = c
             self.rs = rs
@@ -57,12 +57,11 @@ class SatProfile:
         Initializes concentration and rs parameters 
         """
         
-        r200 = _compute_default_r_delta(self.Mh, self.cosmo)
-        c = _compute_default_concentration(r200, self.cosmo)
-        rs = _compute_r_star(r200,c)
-        nu = _compute_nu(self.cosmo)
-        
-        return c, rs, nu
+        self.r200 = _compute_default_r_delta(self.Mh, self.cosmo)
+        self.c = _compute_default_concentration(self.r200,
+                                                self.cosmo)
+        self.rs = _compute_r_star(self.r200,self.c)
+        self.nu = _compute_nu(self.cosmo)
         
     def _compute_u_profile(self):
         if self.profile_type == 'nfw':
@@ -73,6 +72,9 @@ class SatProfile:
                                         self.theta)
             
         return u
+    
+    def get_u_profile(self):
+        return self.u
                 
     def update_theta(self, theta):
         """
@@ -80,6 +82,7 @@ class SatProfile:
         Only needed for theta-dependent models (e.g., 'mixed').
         """
         self.theta = theta
+        self._cache_params()
         self.u = self._compute_u_profile()
         
     def _compute_halo_bias(self, model=None):
