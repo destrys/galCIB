@@ -72,27 +72,3 @@ class Survey:
         Returns (freq_array_Hz, response_array) for given effective freq in GHz.
         """
         return self.filters.get(freq_GHz, (None, None))
-    
-    def apply_filter_to_sed(self, sed, freq_sed, filter_key):
-        """
-        Returns predicted flux of a given SED through a single filter.
-
-        Args:
-            sed : (Nz, Nwv) array of SEDs (Nz samples, Nwv frequencies)
-            freq_sed : (Nwv,) array of frequencies for the SED
-            filter_key : key to select filter from self.filters dict
-
-        Returns:
-            flux : (Nz,) flux for each SED through selected filter
-        """
-        filt_freq, filt_response = self.filters[filter_key]  # unpack filter arrays
-        sed = np.atleast_2d(sed)  # ensure shape (Nz, Nwv)
-        norm = simpson(filt_response, x=filt_freq)
-
-        # Integrate each SED over the filter response with interpolation
-
-        flux = np.array([simpson(np.interp(filt_freq, w_row, 
-                                       s_row, left=0.0, right=0.0) * filt_response, 
-                             x=filt_freq) for w_row, s_row in zip(freq_sed, sed)])
-
-        return flux / norm

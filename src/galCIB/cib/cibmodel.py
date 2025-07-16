@@ -117,8 +117,9 @@ class CIBModel:
         
         djc/dlog Mh (Mh, z) = chi^2 (1+z) * SFRc/K * S_nu(z)
         """
-        Ncen_IR = 1 #FIXME: for test 
-        print(f'set Ncen_IR = 1 for testing.')
+        
+        #Ncen_IR = 1 #FIXME: for test 
+        #print(f'set Ncen_IR = 1 for testing.')
         SFRc = sfr * Ncen_IR # (1, Nm, Nz)
         djc = self.geom_prefact_over_KC * SFRc     # (1, Nm, Nz)
         return snu[:,None,:] * djc            # (Nnu, Nm, Nz)
