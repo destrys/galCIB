@@ -45,7 +45,8 @@ class Cosmology:
         self.log10Mh_grid = np.log10(self.Mh_grid)
         
         # calculate geometric factor for C_ell calculation
-        self.geom_factor_c_ell = 1/self.c * self.Hz/self.chi**2
+        #self.geom_factor_c_ell = 1/self.c * self.Hz/self.chi**2
+        self.geom_factor = self.dchi_dz/self.chi**2
         
     def _generate_mesh_grid(self,use_mesh_grid=True):
         """
@@ -69,11 +70,11 @@ class Cosmology:
         hmf_grid = np.zeros((len(self.Mh),len(self.z)))
         
         if self.use_little_h is False:
-            k_range = self.k * cosmo.h
-            Mh_range = self.Mh/cosmo.h
+            k_range = self.k / cosmo.h # Units of h/Mpc for colossus
+            Mh_range = self.Mh * cosmo.h # Msol/h for colossus
         else: 
-            k_range = self.k
-            Mh_range = self.Mh
+            k_range = self.k # units of h/Mpc 
+            Mh_range = self.Mh # units of Msol/h
         
         for i in range(len(self.z)):
             tmp_pk = cosmo.matterPowerSpectrum(k_range, 
@@ -139,6 +140,9 @@ class Cosmology:
         
         # speed of light in km/s 
         self.c = 299792.458  # km/s
+        
+        # dchi/dz 
+        self.dchi_dz = self.c/self.cosmo.Hz(self.z)
          
     def _calculate_chi(self):
         
