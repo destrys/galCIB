@@ -16,13 +16,13 @@ class PkBuilder:
         self.hod = hod_model
         self.cib = cib_model
         self.prof_model = prof_model
-        self.u = prof_model.u
-        self.k = cosmology.k
-        self.z = cosmology.z
-        self.log10Mh = cosmology.log10Mh
+        self.u = self.prof_model.u
+        self.k = self.cosmo.k
+        self.z = self.cosmo.z
+        self.log10Mh = self.cosmo.log10Mh
         self.dlog10Mh = self.log10Mh[1] - self.log10Mh[0] # equal spacing
         #FIXME: let user pass unequal spacing as an option
-        self.hmf = cosmology.hmf_grid
+        self.hmf = self.cosmo.hmf_grid
         self.hmfxbias = self.hmf * prof_model.hbias
         
         self.theta_cen = theta_cen
@@ -83,6 +83,7 @@ class PkBuilder:
         Cache new profile
         """
         self.prof_model.update_theta(self.theta_prof)
+        self.u = self.prof_model.u
         
     def _compute_nbar(self):
         # A12 of 2204.05299
@@ -135,21 +136,30 @@ class PkBuilder:
         self._update_theta(theta_cen, theta_sat, theta_prof,
                            theta_sfr, theta_snu, theta_IR_hod)
         
-        pk_gg_2h = compute_Pgg_2h(self)
-        pk_gg_1h = compute_Pgg_1h(self)
+        self.pk_gg_2h = compute_Pgg_2h(self)
+        self.pk_gg_1h = compute_Pgg_1h(self)
         
         if return_full_matrix_II is False: 
-            pk_II_2h, self.twoh_pairs = compute_PII_2h(self, return_full_matrix=return_full_matrix_II)
-            pk_II_1h, self.oneh_pairs = compute_PII_1h(self, return_full_matrix=return_full_matrix_II)
+            self.pk_II_2h, self.twoh_pairs = compute_PII_2h(self, return_full_matrix=return_full_matrix_II)
+            self.pk_II_1h, self.oneh_pairs = compute_PII_1h(self, return_full_matrix=return_full_matrix_II)
         else:
-            pk_II_2h = compute_PII_2h(self, return_full_matrix=return_full_matrix_II)
-            pk_II_1h = compute_PII_1h(self, return_full_matrix=return_full_matrix_II)
+            self.pk_II_2h = compute_PII_2h(self, return_full_matrix=return_full_matrix_II)
+            self.pk_II_1h = compute_PII_1h(self, return_full_matrix=return_full_matrix_II)
         
-        pk_gI_2h = compute_PgI_2h(self)
-        pk_gI_1h = compute_PgI_1h(self)
+        self.pk_gI_2h = compute_PgI_2h(self)
+        self.pk_gI_1h = compute_PgI_1h(self)
         
-        pk_gg_tot = compute_Puv_tot(pk_gg_1h, pk_gg_2h, hmalpha)
-        pk_II_tot = compute_Puv_tot(pk_II_1h, pk_II_2h, hmalpha)
-        pk_gI_tot = compute_Puv_tot(pk_gI_1h, pk_gI_2h, hmalpha)
+        self.pk_gg_tot = compute_Puv_tot(self.pk_gg_1h, self.pk_gg_2h, hmalpha)
+        self.pk_II_tot = compute_Puv_tot(self.pk_II_1h, self.pk_II_2h, hmalpha)
+        self.pk_gI_tot = compute_Puv_tot(self.pk_gI_1h, self.pk_gI_2h, hmalpha)
         
-        return pk_gg_tot, pk_II_tot, pk_gI_tot 
+        return self.pk_gg_tot, self.pk_II_tot, self.pk_gI_tot 
+    
+    def get_theta(self):
+        """
+        Print parameters.
+        """
+        
+        print(f'central = {self.theta_cen}')
+        print(f'sat = {self.theta_sat}')
+        print(f'profile = {self.theta_prof}')

@@ -39,6 +39,10 @@ class Survey:
         # CIB-specific filters
         self.filters = cib_filters or {}
         
+        # C_ell specific
+        self.ells = ells 
+        self.nside = nside 
+        
         # If user does not provide nu_obs explicitly, use keys of filters sorted
         if nu_obs is None and self.filters:
             self.nu_obs = sorted(self.filters.keys())

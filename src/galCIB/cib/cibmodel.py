@@ -49,53 +49,59 @@ class CIBModel:
         self.geom_prefact_over_KC = (self.geom_prefact / KC)[None,None,:] # (1, 1, Nz)
         
         # Precompute subhalo mass grid and mass function
-        log_m_min = 6
-        log_Mh = cosmo.log10Mh
-        log_m_sub = np.linspace(log_m_min, log_Mh[:, None], Nm_sub)  # (Nm_sub, NMh)
-        self.m_sub_grid = (10**log_m_sub)  # (Nm_sub, NMh, 1)
-        self.dlog10m = log_m_sub[1, :] - log_m_sub[0, :]  # shape: (NMh,)
-        self.m_over_M = self.m_sub_grid / cosmo.Mh[None, :, None]  # (Nm_sub, NMh, 1)
+        self.fsub = self.sfr_model.fsub 
+        print(f'fsub = {self.fsub}')
+        
+        self.Mhc = cosmo.Mh * (1-self.fsub)
+        self.log10_Mhc = np.log10(self.Mhc)
+        
+        log10_m_min = 5
+        self.m_sub_grid = np.logspace(log10_m_min, 
+                                self.log10_Mhc,
+                                Nm_sub)  # (Nm_sub, NMh)
+        
+        self.dlog10m = np.log10(self.m_sub_grid[1, :]/self.m_sub_grid[0, :])  # shape: (NMh,)
+        self.m_over_Mhc = (self.m_sub_grid /self.Mhc[None, :])[...,None]  # (Nm_sub, NMh,1)
         
         # Compute SHMF grid
-        self.subhalo_mf_grid = self._compute_subhalo_mf()
+        self.subhalo_mf_grid = self._compute_subhalo_mf()[...,None]
         
         # Compute subhalo BAR grid 
-        self.subhalo_BAR_grid = _compute_BAR_grid(self.cosmo, 
-                                                  self.m_sub_grid[:,:,0]) #(Nm, NMh, Nz)
+        self.subhalo_BAR_grid = _compute_BAR_grid(cosmo=self.cosmo,Mh=None, 
+                                                  m=self.m_sub_grid) #(Nm, NMh)
         
-            
     def _compute_subhalo_mf(self):
         
         if self.subhalo_mf is None: 
             """
             Default based on 10 of 0909.1325.
             """
+            m_over_M = self.m_sub_grid/self.cosmo.Mh
+            
             self.subhalo_mf = lambda m_over_M : 0.3 * m_over_M**-0.7 * np.exp(-9.9 * m_over_M**2.5) * np.log(10)
         
-        return self.subhalo_mf(self.m_over_M)
+        return self.subhalo_mf(m_over_M)
         
             
     def update(self, theta_sfr, theta_snu, theta_hod_IR):
         """
         Update internal cache given current proposal.
+        
+        fraction of the mass of the halo that is in form of
+        sub-halos. We have to take this into account while calculating the
+        star formation rate of the central halos. It should be calulated by
+        accounting for this fraction of the subhalo mass in the halo mass
+        central halo mass in this case is (1-f_sub)*mh where mh is the total
+        mass of the halo.
+        for a given halo mass, f_sub is calculated by taking the first moment
+        of the sub-halo mf and and integrating it over all the subhalo masses
+        and dividing it by the total halo mass.
         """
         
         self._sfr = (self.sfr_model(theta_sfr))#[None,:,:]             # (1, Nm, Nz)
         
-        # full grid of Snu 
-        #self._snu = (self.snu_model(theta_snu))[:,None,:]             # (Nnu, 1, Nz)
-        
-        # Compute raw SED from parametric model
-        raw_sed = self.snu_model(theta_snu)  # shape (Nnu_fine, Nz)
-        freq_sed = self.snu_model.nu_prime   # freq grid for SED
-
-        # For each filter apply
-        filtered_fluxes = []
-        for filt_key in self.survey.filters.keys():
-            flux = self.survey.apply_filter_to_sed(raw_sed.T, freq_sed.T, filt_key)  # note transpose to (Nz, Nnu_fine)
-            filtered_fluxes.append(flux)
-
-        self._snu = np.array(filtered_fluxes)[:,None,:]  # shape (Nfilters, Nz)
+        # Compute effective SED
+        self._snu = self.snu_model(theta_snu)  # shape (Nnu_fine, Nz)
         
         # Compute IR galaxies 
         self._Ncen_IR = (self.hod_IR.ncen(theta_hod_IR))[None,:,:]  # (1, Nm, Nz)
@@ -111,10 +117,11 @@ class CIBModel:
         
         djc/dlog Mh (Mh, z) = chi^2 (1+z) * SFRc/K * S_nu(z)
         """
-        
+        Ncen_IR = 1 #FIXME: for test 
+        print(f'set Ncen_IR = 1 for testing.')
         SFRc = sfr * Ncen_IR # (1, Nm, Nz)
         djc = self.geom_prefact_over_KC * SFRc     # (1, Nm, Nz)
-        return snu * djc            # (Nnu, Nm, Nz)
+        return snu[:,None,:] * djc            # (Nnu, Nm, Nz)
 
     def _compute_djsub(self, sfr, snu, theta_sfr):
         """
@@ -128,30 +135,32 @@ class CIBModel:
         """
         
         #m_sub = self.m_sub_grid      # (Nm_sub, Nm, 1)
-        sfr_M = sfr                # (1, Nm, Nz)
+        sfr_M = sfr[None,...]                # (1, NMh, Nz)
 
         # Calculate SFR(m) 
         sfrII = self.sfr_model.evaluate_from_BAR(self.subhalo_BAR_grid, self.m_sub_grid,
-                                                 theta_sfr) # (Nmsub, Nm, Nz)
+                                                 theta_sfr) # (Nmsub, NMh,1)
         
         # Choose the minimum: min(SFR(m), m/Mh * SFR(M))
-        m_over_M = self.m_over_M          # (Nm_sub, Nm, 1)
-        sfrI = m_over_M * sfr_M                    # (Nm_sub, Nm, Nz)
-        sfr_sub = np.minimum(sfrII, sfrI) # (Nm_sub, Nm, Nz)
+        m_over_M = self.m_over_Mhc          # (Nm_sub, NMh, 1)
+        sfrI = m_over_M * sfr_M                    # (Nm_sub, NMh, Nz)
+        
+        sfr_sub = np.minimum(sfrII, sfrI) # (Nm_sub, NMh, Nz)
 
         # Subhalo mass function
-        dNdlog10m = self.subhalo_mf_grid  # (Nm_sub, Nm, 1)
+        dNdlog10m = self.subhalo_mf_grid  # (Nm_sub, NMh, 1)
         
-        integrand = sfr_sub * dNdlog10m                         # (Nm_sub, Nm, Nz)
+        integrand = sfr_sub * dNdlog10m  # (Nm_sub, NMh, Nz)
         sfr_sub_total = np.empty((self.NMh, self.Nz))
         
         for i in range(self.NMh):
             sfr_sub_total[i, :] = simpson(integrand[:, i, :],
                                   dx=self.dlog10m[i],
-                                  axis=0) # (Nm, Nz)
+                                  #x=np.log10(self.m_sub_grid[:,i]),
+                                  axis=0) # (NMh, Nz)
 
         djsub = self.geom_prefact_over_KC * sfr_sub_total  # (Nm, Nz)
-        return snu * djsub#[None, :, :]                  # (Nnu, Nm, Nz)
+        return snu[:,None,:] * djsub                  # (Nnu, Nm, Nz)
 
     def get_djc(self):
         return self._dj_central

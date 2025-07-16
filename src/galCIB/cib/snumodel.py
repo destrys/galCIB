@@ -7,22 +7,23 @@ class SnuModel:
                  name, 
                  cosmo,
                  nu_prime=None, 
-                 data_dir=None):
+                 m21_fdata="../data/filtered_snu_planck.fits"):
         
         self.name = name
         self.cosmo = cosmo
         self.z = cosmo.z
-        self.nu_prime = nu_prime or self._generate_nu_prime_grid() # (Nnu, Nz)
-        self.model_fn = self._build_model(name, data_dir)
+        if nu_prime is not None: 
+            self.nu_prime = nu_prime
+        else:
+            self.nu_prime = self._generate_nu_prime_grid() # (Nnu, Nz)
+        self.model_fn = self._build_model(name, m21_fdata)
 
     def _build_model(self, name, data_dir):
         factory = get_snu_model(name)
         if name == "Y23":
             return factory(self.nu_prime, self.z)
         elif name == "M21":
-            if data_dir is None:
-                raise ValueError("Must provide `data_dir` for M21")
-            return factory(self.cosmo, data_dir)
+            return factory(self.nu_prime, self.cosmo, data_dir)
         else:
             raise ValueError(f"Unknown snu model: {name}")
 

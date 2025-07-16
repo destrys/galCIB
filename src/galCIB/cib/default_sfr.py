@@ -28,12 +28,42 @@ def sfr_default(BAR_grid, z_ratio):
         
         # Mpeak evolving as a func. of z 
         Mpeak_z = 10**evolving_log_mass(mu0_peak, mup_peak, z_ratio)
-        
         # 2.39 of 2310.10848
-        sigmaM_z = np.where(M < Mpeak_z, sigmaM0, 
-                        sigmaM0*(1-tau/zc * np.maximum(0, zc-z)))  
+        sigmaM_z = sigmaM0 - tau * np.maximum(0, zc - z)              # (Nz,)
         
-        expterm = -0.5 * ((np.log(M) - np.log(Mpeak_z))/sigmaM_z)**2
+        # Broadcast M and Mpeak_z to (..., Nz) shape
+        #M_b, Mpeak_z_b = np.broadcast_arrays(M[..., None], Mpeak_z)    # (..., Nz)
+        # Expand M to (..., 1) so it broadcasts with (Nz,)
+        # M_b = np.expand_dims(M, -1)               # (..., 1)
+        # Mpeak_z_b = Mpeak_z[np.newaxis]           # (1, Nz)
+        # sigmaM_z_b = sigmaM_z[np.newaxis]         # (1, Nz)
+
+        # # Now broadcast to (..., Nz)
+        # M_b, Mpeak_z_b = np.broadcast_arrays(M_b, Mpeak_z_b)
+        # _, sigmaM_z_b = np.broadcast_arrays(M_b, sigmaM_z_b)
+        
+        # sigmaM_z = np.where(M < Mpeak_z, sigmaM0, 
+        #                 sigmaM0*(1-tau/zc * np.maximum(0, zc-z)))  
+        # sigmaM_z = np.where(M_b < Mpeak_z_b, sigmaM0,
+        #                     sigmaM0-tau*np.maximum(0,zc-z))
+        
+        
+        Nz = z_ratio.shape[0]
+        
+        Mpeak_z = 10**evolving_log_mass(mu0_peak, mup_peak, z_ratio)  # (Nz,)
+        sigmaM_z = sigmaM0 - tau * np.maximum(0, zc - z)              # (Nz,)
+        
+        M_b = np.broadcast_to(M[..., None], M.shape + (Nz,))          # (..., Nz)
+        
+        Mpeak_b = np.broadcast_to(Mpeak_z, M_b.shape)                 # (..., Nz)
+        sigmaM_b = np.where(M_b < Mpeak_b, sigmaM0,
+                            np.broadcast_to(sigmaM_z, M_b.shape))     # (..., Nz)
+
+        expterm = -0.5 * ((np.log(M_b) - np.log(Mpeak_b)) / sigmaM_b) ** 2
+            
+        
+        # sigmaM_eff = np.where(M_b < Mpeak_z_b, sigmaM0, sigmaM_z_b)
+        # expterm = -0.5 * ((np.log(M_b) - np.log(Mpeak_z_b))/sigmaM_eff)**2
         
         eta_z = eta_max * np.exp(expterm)
         
@@ -42,6 +72,12 @@ def sfr_default(BAR_grid, z_ratio):
     def sfr_model(M, z, theta_eta):
         eta_vals = eta_fn(M,z,theta_eta,
                           z_ratio=z_ratio)
+        
+        
+        print(eta_vals.shape)
+        if eta_vals.shape != BAR_grid.shape:
+            raise ValueError(f"Shape mismatch: eta_vals {eta_vals.shape}, BAR_grid {BAR_grid.shape}")
+        
         return eta_vals * BAR_grid
     
     return sfr_model

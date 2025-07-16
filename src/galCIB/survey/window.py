@@ -64,12 +64,13 @@ def compute_Wg(z, pz, use_mag_bias = True, mag_alpha = None, cosmo = None):
     Returns radial kernel of galaxy survey.
     """
     
-    wgal = pz 
+    wgal = pz * 1/cosmo.dchi_dz
     
     if use_mag_bias:
         if mag_alpha is None:
             raise ValueError("mag_alpha must be provided when use_mag_bias=True")
         wmu = _compute_Wmu(z,pz,mag_alpha,cosmo)
+        print(f'wmu = {wmu}')
         wgal_tot = wgal + wmu
     else:
         wgal_tot = wgal

@@ -32,7 +32,7 @@ def compute_Pgg_2h(pkobj):
     """
     
     prefact = pkobj.cosmo.pk_grid/pkobj.nbar2
-    Pgg_2h = prefact * pkobj.Ig
+    Pgg_2h = prefact * pkobj.Ig**2
     
     return Pgg_2h 
 
@@ -151,7 +151,7 @@ def compute_PgI_2h(pkobj):
     """
     
     PgI_2h = pkobj.Ig * pkobj.Icib * pkobj.cosmo.pk_grid/pkobj.nbar 
-    
+
     return PgI_2h
 
 def compute_PgI_1h(pkobj):
