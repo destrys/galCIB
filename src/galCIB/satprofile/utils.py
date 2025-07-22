@@ -177,3 +177,13 @@ def _compute_r_star(r200, c200c):
     rstar = r200/c200c  
     
     return rstar
+
+def _compute_delta_halo(prof,delta_wrt='mean'):
+    """ Overdensity of a halo w.r.t 
+    mean density or critical density"""
+    
+    if delta_wrt == 'mean':
+        return prof.delta_h
+
+    elif delta_wrt == 'crit':
+        return prof.delta_h / prof.cosmo.Om_z

@@ -8,7 +8,7 @@ from colossus.lss import bias
 import warnings
 
 from .default_models import compute_unfw, compute_nfw_exp_mixed
-from .utils import _compute_default_r_delta, _compute_default_concentration, _compute_r_star, _compute_nu
+from .utils import _compute_default_r_delta, _compute_default_concentration, _compute_r_star, _compute_nu, _compute_delta_halo
 
 warnings.simplefilter("once")
 
@@ -24,7 +24,8 @@ class SatProfile:
         
     def __init__(self, cosmology, theta=None,
                  c=None, rs=None,
-                 profile_type='nfw'):
+                 profile_type='nfw',
+                 delta_h=200):
         self.cosmo = cosmology
         self.Mh = cosmology.Mh               # (k,M,z)
         self.z = cosmology.z               # (k,M,z)
@@ -32,6 +33,7 @@ class SatProfile:
         self.theta = theta                  # for future model extension
         self.dlnpk_dlnk = cosmology.dlnpk_dlnk # concentration calculation
         self.profile_type = profile_type
+        self.delta_h = delta_h
         
         if self.profile_type == "mixed" and self.theta is not None:
             warnings.warn(
@@ -50,14 +52,15 @@ class SatProfile:
         self.u = self._compute_u_profile()
         
         # initialize halo bias 
-        self._compute_halo_bias()
+        self._compute_bnu()
         
     def _cache_params(self):
         """
         Initializes concentration and rs parameters 
         """
         
-        self.r200 = _compute_default_r_delta(self.Mh, self.cosmo)
+        self.r200 = _compute_default_r_delta(self.Mh, self.cosmo,
+                                             self.delta_h)
         self.c = _compute_default_concentration(self.r200,
                                                 self.cosmo)
         self.rs = _compute_r_star(self.r200,self.c)
@@ -85,12 +88,32 @@ class SatProfile:
         self._cache_params()
         self.u = self._compute_u_profile()
         
-    def _compute_halo_bias(self, model=None):
+    # def _compute_halo_bias(self, model=None):
+    #     """
+    #     Returns halo bias using colossus; defaults to Tinker10
+    #     """
+        
+    #     self.hbias = bias.haloBiasFromNu(self.nu, self.z, mdef='200m')
+        
+        
+    def _compute_bnu(self):
         """
-        Returns halo bias using colossus; defaults to Tinker10
+        Returns halo bias based on Tinker+2010.
         """
         
-        self.hbias = bias.haloBiasFromNu(self.nu, self.z, mdef='200m')
+        # Can also use "crit" for w.r.t. critical density
+        delta = _compute_delta_halo(self,
+                                    delta_wrt="mean")
         
+        y = np.log10(delta)
+        A = 1.0 + 0.24*y*np.exp(-(4./y)**4)
+        aa = 0.44*y - 0.88
+        B = 0.183
+        b = 1.5
+        C = 0.019 + 0.107*y + 0.19*np.exp(-(4./y)**4)
+        c = 2.4
+        nuu = self.nu
+        dc = 1.686  # neglecting the redshift evolution
         
+        self.bnu = 1 - (A*nuu**aa/(nuu**aa + dc**aa)) + B*nuu**b + C*nuu**c
         
