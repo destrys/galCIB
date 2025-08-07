@@ -14,7 +14,7 @@ class Survey:
                  pz=None, mag_alpha=None,  # galaxy-specific
                  cib_filters=None,  # dict: freq_GHz -> (freq_array_Hz, response_array)
                  nu_obs=None,   # optional override of effective frequencies
-                 ells=None, nside=None,
+                 ells=None, nside=None, binned_ell_ledges=None, # if Cl should be binned
                  name=None):
         
         """
@@ -41,6 +41,7 @@ class Survey:
         
         # C_ell specific
         self.ells = ells 
+        self.binned_ell_ledges = binned_ell_ledges
         self.nside = nside 
         
         # If user does not provide nu_obs explicitly, use keys of filters sorted

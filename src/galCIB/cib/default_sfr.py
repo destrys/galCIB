@@ -72,9 +72,7 @@ def sfr_default(BAR_grid, z_ratio):
     def sfr_model(M, z, theta_eta):
         eta_vals = eta_fn(M,z,theta_eta,
                           z_ratio=z_ratio)
-        
-        
-        print(eta_vals.shape)
+
         if eta_vals.shape != BAR_grid.shape:
             raise ValueError(f"Shape mismatch: eta_vals {eta_vals.shape}, BAR_grid {BAR_grid.shape}")
         

@@ -13,9 +13,9 @@ class SnuModel:
                  ):
         
         self.name = name
-        self.cosmo = cosmo
         self.survey = survey
-        self.z = cosmo.z
+        self.cosmo = cosmo 
+        self.z = self.cosmo.z
         if nu_prime is not None: 
             self.nu_prime = nu_prime
         else:

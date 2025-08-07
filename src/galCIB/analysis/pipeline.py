@@ -2,8 +2,10 @@
 from scipy.integrate import simpson
 import numpy as np 
 
+from .utils import bin_mat
+
 class AnalysisModel:
-    def __init__(self, cosmology, survey, pk3d):
+    def __init__(self, survey, pk3d, bin_cl=False):
         """
         Initializes the model with fixed cosmology and survey properties.
 
@@ -14,9 +16,10 @@ class AnalysisModel:
             profile_type: e.g., "nfw" or "mixed"
         """
         
-        self.cosmo = cosmology
         self.survey = survey
         self.pk = pk3d
+        self.cosmo = self.pk.cosmo
+        self.bin_cl=bin_cl # if to bin Cl
         
         self.geom_factor = self.cosmo.geom_factor
         self.Wg = survey.Wg
@@ -26,6 +29,18 @@ class AnalysisModel:
         self.Nz = len(self.survey.z)
         self.Nnu = len(self.survey.nu_obs)
         self.Nnu_comb = self.Nnu * (self.Nnu + 1)//2
+        
+        self.cc_gI = np.array([self._get_color_correction(nu)for nu in self.survey.nu_obs])
+        self.cc_II = np.array([
+            self._get_color_correction(nu1) * self._get_color_correction(nu2)
+            
+            for i, nu1 in enumerate(self.survey.nu_obs)
+            for j, nu2 in enumerate(self.survey.nu_obs)
+            if j >= i
+            ])
+        
+        self.cc_gI = self.cc_gI[:,None]
+        self.cc_II = self.cc_II[:,None]
     
     def _kPk_interpolator(self, pk):
         """
@@ -66,10 +81,30 @@ class AnalysisModel:
         
         return cl
     
+    def _get_color_correction(self, f_obs):
+        """
+        Returns color correction multiplicative factor
+        on CIB. 
+        
+        Each power of nu gets one cc_pl value
+        """
+        
+        cc_pl = {}
+        cc_pl[100] = 1.076
+        cc_pl[143] = 1.017
+        cc_pl[217] = 1.119
+        cc_pl[353] = 1.097
+        cc_pl[545] = 1.068
+        cc_pl[857] = 0.995
+        
+        return cc_pl[f_obs]
+    
     def update_cl(self, theta_cen=None, theta_sat=None,
                   theta_prof=None,
                   theta_sfr=None, theta_snu=None, theta_IR_hod=None,
-                  hmalpha=1):
+                  theta_sn_gI=None, theta_sn_II = None,
+                  hmalpha=1,bin_cl=False,
+                  ):
         """
         Recalculates C_ell based on parameters. 
         """
@@ -80,7 +115,7 @@ class AnalysisModel:
                                         theta_sfr=theta_sfr,
                                         theta_snu=theta_snu,
                                         theta_IR_hod=theta_IR_hod,
-                                        hmalpha=1)
+                                        hmalpha=hmalpha)
         
         # interpolate on the ell-to-k grid
         pgg_int = self._kPk_interpolator(pgg)
@@ -92,10 +127,33 @@ class AnalysisModel:
         pII_int = np.zeros((self.Nnu_comb, self.Nell, self.Nz))
         for i in range(self.Nnu_comb):
             pII_int[i] = self._kPk_interpolator(pII[i])
-            
+        
         # compute C_ell 
         Cgg = self.compute_cl(pgg_int, self.Wg, self.Wg)
         CgI = self.compute_cl(pgI_int, self.Wg, self.Wcib)
         CII = self.compute_cl(pII_int, self.Wcib, self.Wcib)
         
-        return Cgg, CgI, CII 
+        # apply color correction
+        CgI = CgI * self.cc_gI
+        CII = CII * self.cc_II
+        
+        # apply shot-noise 
+        CgI = CgI + theta_sn_gI[:,None]
+        CII = CII + theta_sn_II[:,None]
+        
+        if bin_cl:
+            bin_center, Cgg_binned = bin_mat(self.survey.ells, 
+                                             Cgg, 
+                                             self.survey.binned_ell_ledges)
+            
+            _, CgI_binned = bin_mat(self.survey.ells, 
+                                    CgI, 
+                                    self.survey.binned_ell_ledges)
+            
+            _, CII_binned = bin_mat(self.survey.ells, 
+                                    CII, 
+                                    self.survey.binned_ell_ledges)
+            
+            return bin_center, Cgg_binned, CgI_binned, CII_binned
+        else:
+            return Cgg, CgI, CII 

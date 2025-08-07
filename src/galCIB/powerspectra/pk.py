@@ -7,14 +7,14 @@ from scipy.integrate import simpson
 from .utils import ensure_nm_nz_shape, compute_Pgg_1h, compute_Pgg_2h, compute_PgI_1h, compute_PgI_2h, compute_PII_1h, compute_PII_2h, compute_Puv_tot
 
 class PkBuilder:
-    def __init__(self, cosmology, hod_model, cib_model, prof_model,
+    def __init__(self, hod_model, cib_model, prof_model,
                  theta_cen=None, theta_sat=None, 
                  theta_prof=None,
                  theta_sfr=None, theta_snu=None,
                  theta_IR_hod=None):
-        self.cosmo = cosmology
         self.hod = hod_model
         self.cib = cib_model
+        self.cosmo = self.cib.cosmo
         self.prof_model = prof_model
         self.u = self.prof_model.u
         self.k = self.cosmo.k
@@ -23,7 +23,7 @@ class PkBuilder:
         self.dlog10Mh = self.log10Mh[1] - self.log10Mh[0] # equal spacing
         #FIXME: let user pass unequal spacing as an option
         self.hmf = self.cosmo.hmf_grid
-        self.hmfxbias = self.hmf * prof_model.hbias
+        self.hmfxbias = self.hmf * prof_model.bnu
         
         self.theta_cen = theta_cen
         self.theta_sat = theta_sat

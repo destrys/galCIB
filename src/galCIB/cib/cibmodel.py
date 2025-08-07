@@ -30,29 +30,28 @@ class CIBModel:
         Number of subhalo mass bins to use.
     """
     
-    def __init__(self, cosmo, hod_IR, sfr_model, snu_model, survey,
+    def __init__(self, hod_IR, sfr_model, snu_model,
                  subhalo_mf=None, Nm_sub=98):
         
-        self.cosmo = cosmo
         self.hod_IR = hod_IR
         self.sfr_model = sfr_model
         self.snu_model = snu_model
-        self.survey = survey
+        self.survey = self.snu_model.survey
+        self.cosmo = self.snu_model.cosmo 
         self.subhalo_mf = subhalo_mf 
         
-        self.NMh = len(cosmo.Mh)
-        self.Nz = len(cosmo.z)
+        self.NMh = len(self.cosmo.Mh)
+        self.Nz = len(self.cosmo.z)
         
         # Geometric prefactor
-        self.geom_prefact = cosmo.chi**2 * (1 + cosmo.z)
+        self.geom_prefact = self.cosmo.chi**2 * (1 + self.cosmo.z)
         KC = 1e-10 # Kennicutt Constant
         self.geom_prefact_over_KC = (self.geom_prefact / KC)[None,None,:] # (1, 1, Nz)
         
         # Precompute subhalo mass grid and mass function
         self.fsub = self.sfr_model.fsub 
-        print(f'fsub = {self.fsub}')
         
-        self.Mhc = cosmo.Mh * (1-self.fsub)
+        self.Mhc = self.cosmo.Mh * (1-self.fsub)
         self.log10_Mhc = np.log10(self.Mhc)
         
         log10_m_min = 5
@@ -118,7 +117,7 @@ class CIBModel:
         djc/dlog Mh (Mh, z) = chi^2 (1+z) * SFRc/K * S_nu(z)
         """
         
-        #Ncen_IR = 1 #FIXME: for test 
+        # Ncen_IR = 1 #FIXME: for test 
         #print(f'set Ncen_IR = 1 for testing.')
         SFRc = sfr * Ncen_IR # (1, Nm, Nz)
         djc = self.geom_prefact_over_KC * SFRc     # (1, Nm, Nz)

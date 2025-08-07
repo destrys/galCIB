@@ -4,9 +4,9 @@ from .registry import get_sfr_model
 from .utils import _compute_BAR_grid
 
 class SFRModel:
-    def __init__(self, name: str, hod, cosmo, fsub=None):
+    def __init__(self, name: str, hod, fsub=None):
         self.z_ratio = hod.z_ratio
-        self.cosmo = cosmo
+        self.cosmo = hod.cosmo
         self.fsub = fsub 
         
         if self.fsub is not None: 
@@ -21,9 +21,9 @@ class SFRModel:
             and dividing it by the total halo mass.
             """
             
-            self.Mh = cosmo.Mh * (1-fsub)
+            self.Mh = self.cosmo.Mh * (1-fsub)
         else:
-            self.Mh = cosmo.Mh
+            self.Mh = self.cosmo.Mh
             self.fsub = 0
             
         self.BAR_grid = _compute_BAR_grid(cosmo=self.cosmo,
