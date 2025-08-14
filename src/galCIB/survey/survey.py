@@ -6,8 +6,7 @@ the analysis.
 """
 
 import numpy as np 
-from scipy.integrate import simpson 
-from .window import compute_Wcib, compute_Wg
+from .window import compute_Wcib, compute_Wg, compute_Wmu
 
 class Survey:
     def __init__(self, z, 
@@ -62,11 +61,10 @@ class Survey:
                 raise ValueError(f"mag_alpha shape {mag_alpha.shape} does not match z shape {self.z.shape}")
             return mag_alpha
     
-    def compute_windows(self, cosmology, use_mag_bias=True):
+    def compute_windows(self, cosmology):
         self.Wcib = compute_Wcib(self.z)
-        self.Wg = compute_Wg(self.z, self.pz, use_mag_bias=use_mag_bias,
-                                  mag_alpha=self.mag_alpha,
-                                  cosmo=cosmology)
+        self.Wg = compute_Wg(self.pz, cosmo=cosmology)
+        self.Wmu = compute_Wmu(self.z, self.pz, self.mag_alpha, cosmology)
     
     def get_filter_response(self, freq_GHz):
         """

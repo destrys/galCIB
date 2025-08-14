@@ -19,7 +19,7 @@ def compute_Wcib(z):
         
         return wcib
     
-def _compute_Wmu(z, pz, mag_alpha, cosmo):
+def compute_Wmu(z, pz, mag_alpha, cosmo):
     """
     Returns radial kernel of magnification bias.
     
@@ -55,20 +55,11 @@ def _compute_Wmu(z, pz, mag_alpha, cosmo):
     
     return wmu
     
-def compute_Wg(z, pz, use_mag_bias = True, mag_alpha = None, cosmo = None):
+def compute_Wg(pz, cosmo = None):
     """
     Returns radial kernel of galaxy survey.
     """
     
     wgal = pz * 1/cosmo.dchi_dz
-    
-    if use_mag_bias:
-        if mag_alpha is None:
-            raise ValueError("mag_alpha must be provided when use_mag_bias=True")
-        wmu = _compute_Wmu(z,pz,mag_alpha,cosmo)
-
-        wgal_tot = wgal + wmu
-    else:
-        wgal_tot = wgal
-        
-    return wgal_tot
+            
+    return wgal

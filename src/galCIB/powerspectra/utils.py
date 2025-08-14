@@ -29,12 +29,23 @@ def ensure_nm_nz_shape(arr, Nm, Nz):
 def compute_Pgg_2h(pkobj):
     """
     Compute P_gg^2h(k,z) = P_lin(k,z)/nbar^2 * [integral(HMF * [Nc+Ns*u]*bias*dlog10Mh)]^2
+    
+    Also compute magnification bias
+    P_gm^2h (k,z) = P_lin(k,z)/nbar * [integral(HMF * [Nc+Ns*u]*bias*dlog10Mh)]
+    
+    Note P_gg = P_gm * [integral(HMF * [Nc+Ns*u]*bias*dlog10Mh)]/nbar
     """
     
-    prefact = pkobj.cosmo.pk_grid/pkobj.nbar2
-    Pgg_2h = prefact * pkobj.Ig**2
     
-    return Pgg_2h 
+    plin = pkobj.cosmo.pk_grid # (Nk, Nz)
+    nbar = pkobj.nbar # (Nz,)
+    Ig = pkobj.Ig # (Nk,Nz)
+    
+    Pgmu_2h = plin/nbar[None,:] * Ig
+    
+    Pgg_2h = plin/pkobj.nbar2 * pkobj.Ig**2
+    
+    return Pgg_2h, Pgmu_2h
 
 def compute_Pgg_1h(pkobj):
     """
@@ -48,12 +59,37 @@ def compute_Pgg_1h(pkobj):
     prefact = 1/pkobj.nbar2
     numerator = 2*pkobj.ncen*pkobj.nsat_u + (pkobj.nsat_u)**2
     
-    integrand = pkobj.hmf * numerator # (Nk, NMh, Nz)
+    integrand = prefact * pkobj.hmf * numerator # (Nk, NMh, Nz)
     integral = simpson(integrand,axis=1,dx=pkobj.dlog10Mh)
     
-    Pgg_1h = integral * prefact 
+    Pgg_1h = integral #* prefact 
     
     return Pgg_1h
+
+def compute_Pgmu_2h(pkobj):
+    """
+    Compute P_gm^2h (k,z) = P_lin(k,z)/nbar * [integral(HMF * [Nc+Ns*u]*bias*dlog10Mh)]
+    
+    This integral is important if there is magnification bias.
+    """
+    
+    plin = pkobj.cosmo.pk_grid # (Nk, Nz)
+    nbar = pkobj.nbar # (Nz,)
+    Ig = pkobj.Ig # (Nk,Nz)
+    
+    p2h = plin/nbar[None,:] * Ig
+    
+    return p2h
+
+def compute_Pmumu_2h(pkobj):
+    """
+    Computes the magnification bias auto term.
+    This is simply Plin.
+    """
+    
+    return pkobj.cosmo.pk_grid
+
+
 
 def compute_PII_2h(pkobj, return_full_matrix=True):
     """
@@ -140,19 +176,23 @@ def compute_PII_1h(pkobj, return_full_matrix=False):
     else:
         return PII_1h_unique, pairs
     
-
 def compute_PgI_2h(pkobj):
     """
     Returns 2-halo term of galaxy X CIB. 
     
     A14 of 2204.05299.
     
-    P(nu,k,z) = Plin/nbar * integral (HMF*[nc+ns*u]*bias*dlog10Mh) * integral(HMF*(djc+djsub*u)*bias*dlog10Mh)
+    P_gI(nu,k,z) = Plin/nbar * integral (HMF*[nc+ns*u]*bias*dlog10Mh) * integral(HMF*(djc+djsub*u)*bias*dlog10Mh)
+    Note, P_gI = P_muI/nbar * integral (HMF*[nc+ns*u]*bias*dlog10Mh) 
+    
+    Added magnification bias correction too. 
+    P_muI(nu,k,z) = Plin * integral(HMF*(djc+djsub*u)*bias*dlog10Mh)
     """
     
-    PgI_2h = pkobj.Ig * pkobj.Icib * pkobj.cosmo.pk_grid/pkobj.nbar 
-
-    return PgI_2h
+    PmuI_2h = pkobj.Icib * pkobj.cosmo.pk_grid
+    PgI_2h = pkobj.Ig * PmuI_2h/pkobj.nbar 
+    
+    return PgI_2h, PmuI_2h
 
 def compute_PgI_1h(pkobj):
     """

@@ -24,6 +24,7 @@ class AnalysisModel:
         self.geom_factor = self.cosmo.geom_factor
         self.Wg = survey.Wg
         self.Wcib = survey.Wcib
+        self.Wmu = survey.Wmu 
         
         self.Nell = len(self.survey.ells)
         self.Nz = len(self.survey.z)
@@ -41,6 +42,9 @@ class AnalysisModel:
         
         self.cc_gI = self.cc_gI[:,None]
         self.cc_II = self.cc_II[:,None]
+    
+        # compute and cache mag bias auto-term
+        self.Cmumu = self._cache_cl_mumu()
     
     def _kPk_interpolator(self, pk):
         """
@@ -99,17 +103,35 @@ class AnalysisModel:
         
         return cc_pl[f_obs]
     
+    def _cache_cl_mumu(self):
+        """
+        Calculates the auto-power of mag bias. 
+        
+        Since this only depends on cosmology, needs to be
+        only calculated once and can be cached. 
+        """
+        
+        pmumu = self.pk.pk_mumu_2h
+        
+        # interpolate on the ell-to-k grid
+        pmumu_int = self._kPk_interpolator(pmumu)
+    
+        # compute C_ell 
+        Cmumu = self.compute_cl(pmumu_int, self.Wmu, self.Wmu)
+        
+        return Cmumu
+    
     def update_cl(self, theta_cen=None, theta_sat=None,
                   theta_prof=None,
                   theta_sfr=None, theta_snu=None, theta_IR_hod=None,
                   theta_sn_gI=None, theta_sn_II = None,
-                  hmalpha=1,bin_cl=False,
+                  hmalpha=1
                   ):
         """
         Recalculates C_ell based on parameters. 
         """
         
-        pgg, pII, pgI = self.pk.compute_pk(theta_cen=theta_cen,
+        pgg, pII, pgI, pgmu, pmuI = self.pk.compute_pk(theta_cen=theta_cen,
                                         theta_sat=theta_sat,
                                         theta_prof=theta_prof,
                                         theta_sfr=theta_sfr,
@@ -119,10 +141,13 @@ class AnalysisModel:
         
         # interpolate on the ell-to-k grid
         pgg_int = self._kPk_interpolator(pgg)
+        pgmu_int = self._kPk_interpolator(pgmu)
         
         pgI_int = np.zeros((self.Nnu, self.Nell, self.Nz)) # Nnu, Nk, Nz
+        pmuI_int = np.zeros((self.Nnu, self.Nell, self.Nz)) # Nnu, Nk, Nz
         for i in range(self.Nnu):
             pgI_int[i] = self._kPk_interpolator(pgI[i])
+            pmuI_int[i] = self._kPk_interpolator(pmuI[i])
         
         pII_int = np.zeros((self.Nnu_comb, self.Nell, self.Nz))
         for i in range(self.Nnu_comb):
@@ -130,30 +155,21 @@ class AnalysisModel:
         
         # compute C_ell 
         Cgg = self.compute_cl(pgg_int, self.Wg, self.Wg)
+        Cgmu = self.compute_cl(pgmu_int, self.Wg, self.Wmu)
+        Cgg_tot = Cgg + 2*Cgmu + self.Cmumu
+        
         CgI = self.compute_cl(pgI_int, self.Wg, self.Wcib)
+        CmuI = self.compute_cl(pmuI_int, self.Wmu, self.Wcib)
+        CgI_tot = CgI + CmuI
+        
         CII = self.compute_cl(pII_int, self.Wcib, self.Wcib)
         
         # apply color correction
-        CgI = CgI * self.cc_gI
+        CgI_tot= CgI_tot * self.cc_gI
         CII = CII * self.cc_II
         
         # apply shot-noise 
-        CgI = CgI + theta_sn_gI[:,None]
+        CgI_tot = CgI_tot + theta_sn_gI[:,None]
         CII = CII + theta_sn_II[:,None]
         
-        if bin_cl:
-            bin_center, Cgg_binned = bin_mat(self.survey.ells, 
-                                             Cgg, 
-                                             self.survey.binned_ell_ledges)
-            
-            _, CgI_binned = bin_mat(self.survey.ells, 
-                                    CgI, 
-                                    self.survey.binned_ell_ledges)
-            
-            _, CII_binned = bin_mat(self.survey.ells, 
-                                    CII, 
-                                    self.survey.binned_ell_ledges)
-            
-            return bin_center, Cgg_binned, CgI_binned, CII_binned
-        else:
-            return Cgg, CgI, CII 
+        return Cgg_tot, CgI_tot, CII 

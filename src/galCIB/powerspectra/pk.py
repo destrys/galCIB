@@ -4,7 +4,7 @@ Contains 1-halo and 2-halo term P(k) functions.
 
 import numpy as np
 from scipy.integrate import simpson
-from .utils import ensure_nm_nz_shape, compute_Pgg_1h, compute_Pgg_2h, compute_PgI_1h, compute_PgI_2h, compute_PII_1h, compute_PII_2h, compute_Puv_tot
+from .utils import ensure_nm_nz_shape, compute_Pgg_1h, compute_Pgg_2h, compute_PgI_1h, compute_PgI_2h, compute_PII_1h, compute_PII_2h, compute_Puv_tot, compute_Pgmu_2h, compute_Pmumu_2h
 
 class PkBuilder:
     def __init__(self, hod_model, cib_model, prof_model,
@@ -31,6 +31,9 @@ class PkBuilder:
         self.theta_sfr = theta_sfr
         self.theta_snu = theta_snu
         self.theta_IR_hod = theta_IR_hod
+        
+        # cache the P_mumu term
+        self._cache_mag_bias_auto_term()
 
     def _cache_galaxy_integral(self):
         """
@@ -54,7 +57,6 @@ class PkBuilder:
         integrand = self.hmfxbias * self.ncen_plus_nsat_u # (Nk, NMh, Nz)
         self.Ig = simpson(integrand, dx=self.dlog10Mh, axis=1) # (Nk, Nz)
         
-        
     def _cache_cib_integral(self):
         """
         Cache [djc(nu,M,z) + djs(nu,M,z) * u(k,M,z)]
@@ -77,6 +79,17 @@ class PkBuilder:
         # pre-compute 2h mass integral term for speedup
         integrand = self.djc_plus_djsub_u* self.hmfxbias # (Nnu, Nk, NMh, Nz)
         self.Icib = simpson(integrand, dx=self.dlog10Mh, axis=2) # (Nnu, Nk, Nz)
+        
+    def _cache_mag_bias_auto_term(self):
+        """
+        If magnification bias alpha != 1, P_mumu needs to 
+        be calculated and added to the galaxy analysis. 
+        
+        Since cosmology is fixed, this needs to be only
+        computed once. 
+        """
+        
+        self.pk_mumu_2h = compute_Pmumu_2h(self)
         
     def _cache_u_profile(self):
         """
@@ -136,7 +149,7 @@ class PkBuilder:
         self._update_theta(theta_cen, theta_sat, theta_prof,
                            theta_sfr, theta_snu, theta_IR_hod)
         
-        self.pk_gg_2h = compute_Pgg_2h(self)
+        self.pk_gg_2h, self.pk_gmu_2h = compute_Pgg_2h(self)
         self.pk_gg_1h = compute_Pgg_1h(self)
         
         if return_full_matrix_II is False: 
@@ -146,14 +159,14 @@ class PkBuilder:
             self.pk_II_2h = compute_PII_2h(self, return_full_matrix=return_full_matrix_II)
             self.pk_II_1h = compute_PII_1h(self, return_full_matrix=return_full_matrix_II)
         
-        self.pk_gI_2h = compute_PgI_2h(self)
+        self.pk_gI_2h, self.pk_muI_2h = compute_PgI_2h(self)
         self.pk_gI_1h = compute_PgI_1h(self)
         
         self.pk_gg_tot = compute_Puv_tot(self.pk_gg_1h, self.pk_gg_2h, hmalpha)
         self.pk_II_tot = compute_Puv_tot(self.pk_II_1h, self.pk_II_2h, hmalpha)
         self.pk_gI_tot = compute_Puv_tot(self.pk_gI_1h, self.pk_gI_2h, hmalpha)
         
-        return self.pk_gg_tot, self.pk_II_tot, self.pk_gI_tot 
+        return self.pk_gg_tot, self.pk_II_tot, self.pk_gI_tot, self.pk_gmu_2h, self.pk_muI_2h
     
     def get_theta(self):
         """

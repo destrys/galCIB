@@ -54,9 +54,9 @@ def _compute_BAR_grid(cosmo, Mh=None, m=None):
     
     # Ensure correct shape broadcasting
     m = np.atleast_2d(m)  # shape: (Nm, ...) or (Nm, NMh)
-    if m.shape[-1] == len(cosmo.z):
-        # Already includes z axis
-        raise ValueError("Mass grid 'm' should not include redshift axis")
+    # if m.shape[-1] == len(cosmo.z):
+    #     # Already includes z axis
+    #     raise ValueError("Mass grid 'm' should not include redshift axis")
 
     # Reshape for broadcasting with z
     m = m[..., np.newaxis]           # (..., 1)
