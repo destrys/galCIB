@@ -24,23 +24,14 @@ def sfr_default(BAR_grid, z_ratio):
         """
         
         z_ratio = kwargs.get('z_ratio', None)
-        eta_max, mu0_peak, mup_peak, sigmaM0, tau, zc = theta_eta
+        #eta_max, mu0_peak, mup_peak, sigmaM0, tau, zc = theta_eta
+        eta_max, log10Mpeak, sigmaM0, tau, zc = theta_eta
         
         # Mpeak evolving as a func. of z 
-        Mpeak_z = 10**evolving_log_mass(mu0_peak, mup_peak, z_ratio)
+        #Mpeak_z = 10**evolving_log_mass(mu0_peak, mup_peak, z_ratio)
+        Mpeak_z = 10**log10Mpeak
         # 2.39 of 2310.10848
         sigmaM_z = sigmaM0 - tau * np.maximum(0, zc - z)              # (Nz,)
-        
-        # Broadcast M and Mpeak_z to (..., Nz) shape
-        #M_b, Mpeak_z_b = np.broadcast_arrays(M[..., None], Mpeak_z)    # (..., Nz)
-        # Expand M to (..., 1) so it broadcasts with (Nz,)
-        # M_b = np.expand_dims(M, -1)               # (..., 1)
-        # Mpeak_z_b = Mpeak_z[np.newaxis]           # (1, Nz)
-        # sigmaM_z_b = sigmaM_z[np.newaxis]         # (1, Nz)
-
-        # # Now broadcast to (..., Nz)
-        # M_b, Mpeak_z_b = np.broadcast_arrays(M_b, Mpeak_z_b)
-        # _, sigmaM_z_b = np.broadcast_arrays(M_b, sigmaM_z_b)
         
         # sigmaM_z = np.where(M < Mpeak_z, sigmaM0, 
         #                 sigmaM0*(1-tau/zc * np.maximum(0, zc-z)))  
@@ -49,8 +40,6 @@ def sfr_default(BAR_grid, z_ratio):
         
         
         Nz = z_ratio.shape[0]
-        
-        Mpeak_z = 10**evolving_log_mass(mu0_peak, mup_peak, z_ratio)  # (Nz,)
         sigmaM_z = sigmaM0 - tau * np.maximum(0, zc - z)              # (Nz,)
         
         M_b = np.broadcast_to(M[..., None], M.shape + (Nz,))          # (..., Nz)
