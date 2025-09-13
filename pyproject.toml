@@ -1,0 +1,34 @@
+[project]
+name = "galCIB"
+version = "0.1.0"
+description = "A Python Package to calculate 3D and 2D galaxy-CIB clustering"
+readme = "README.md"
+authors = [
+    { name = "Tanveer Karim", email = "tanveer.karim@utoronto.ca" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "astropy>=6.1.7",
+    "camb>=1.6.4",
+    "colossus>=1.3.9",
+    "numpy>=2.2.6",
+    "scipy>=1.15.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.15,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "galCIB" # Necessary because package name has capitalized chars
+
+[dependency-groups]
+dev = [
+    "healpy>=1.18.1",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.6",
+    "pandas>=2.3.2",
+    "pytest>=8.4.2",
+    "ruff>=0.12.12",
+]
+
