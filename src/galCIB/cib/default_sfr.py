@@ -24,6 +24,7 @@ def sfr_default(BAR_grid, z_ratio):
         """
         
         z_ratio = kwargs.get('z_ratio', None)
+        #eta_max, mu0_peak, mup_peak, sigmaM0, tau, zc = theta_eta
         eta_max, mu0_peak, mup_peak, sigmaM0, tau, zc = theta_eta
         
         # Mpeak evolving as a func. of z 
