@@ -50,8 +50,10 @@ def Ncen_Z05(Mh, theta, z_over_1plusz=None):
     N_c(M) = 0.5 * (1 + erf (ln(M/M_min)/sigma_lnM))
     """
     
-    mu0_Mmin, mup_Mmin, sigma_lnM = theta
-    Mmin_z = 10**evolving_log_mass(mu0_Mmin, mup_Mmin, z_over_1plusz)
+    #mu0_Mmin, mup_Mmin, sigma_lnM = theta
+    Mmin_z, sigma_lnM = theta
+    # Mmin_z = 10**evolving_log_mass(mu0_Mmin, mup_Mmin, z_over_1plusz)
+    Mmin_z = np.array([10**Mmin_z])
     
     erf_term = np.log(Mh[:,np.newaxis]/Mmin_z[np.newaxis,:])/sigma_lnM
     
