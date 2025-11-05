@@ -122,7 +122,7 @@ class AnalysisModel:
         return Cmumu
     
     def update_cl(self, theta_cen=None, theta_sat=None,
-                  theta_prof=None,
+                  theta_gal_prof=None, theta_cib_prof=None,
                   theta_sfr=None, theta_snu=None, theta_IR_hod=None,
                   theta_sn_gI=None, theta_sn_II = None,
                   hmalpha=1
@@ -133,7 +133,8 @@ class AnalysisModel:
         
         pgg, pII, pgI, pgmu, pmuI = self.pk.compute_pk(theta_cen=theta_cen,
                                         theta_sat=theta_sat,
-                                        theta_prof=theta_prof,
+                                        theta_gal_prof=theta_gal_prof,
+                                        theta_cib_prof=theta_cib_prof,
                                         theta_sfr=theta_sfr,
                                         theta_snu=theta_snu,
                                         theta_IR_hod=theta_IR_hod,
