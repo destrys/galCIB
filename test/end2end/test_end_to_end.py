@@ -14,7 +14,7 @@ from galCIB import (
     PkBuilder,
     AnalysisModel,
 )
-from galCIB.utils.io import load_my_filters
+from galCIB.io import load_my_filters
 
 
 def test_minimal_pipeline():
