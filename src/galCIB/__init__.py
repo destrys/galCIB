@@ -1,7 +1,6 @@
 from .cosmology import Cosmology
 from .survey import Survey
-from .galaxy import get_hod_model, register_hod_model  # triggers model registration
-from .galaxy import HODModel
+from .galaxy import get_hod_model, HODModel
 from .cib import get_sfr_model, get_snu_model
 from .cib import CIBModel, SFRModel, SnuModel
 from .satprofile import SatProfile

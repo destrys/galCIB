@@ -4,8 +4,7 @@ from galCIB.utils import get_color_correction
 
 
 class TestColorCorrection:
-
-    @pytest.mark.parametrize("nu, expected",[(100, 1.076), (857, 0.995)])
+    @pytest.mark.parametrize("nu, expected", [(100, 1.076), (857, 0.995)])
     def test_can_get_color_correction(self, nu, expected):
         result = get_color_correction(nu)
         assert result == expected
