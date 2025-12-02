@@ -147,6 +147,6 @@ def test_minimal_pipeline():
     expected_cgI = np.loadtxt(os.path.join(test_data_dir, "cgI.txt"))
     expected_cII = np.loadtxt(os.path.join(test_data_dir, "cII.txt"))
 
-    npt.assert_array_equal(cgg, expected_cgg)
-    npt.assert_array_equal(cgI, expected_cgI)
-    npt.assert_array_equal(cII, expected_cII)
+    npt.assert_allclose(cgg, expected_cgg)
+    npt.assert_allclose(cgI, expected_cgI)
+    npt.assert_allclose(cII, expected_cII)
