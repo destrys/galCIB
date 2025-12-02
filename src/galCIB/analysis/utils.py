@@ -56,7 +56,7 @@ def bin_mat(r, mat, r_bins, axis=-1):
         norm_binned[..., i] = np.sum(weights[mask])
 
     # Normalize
-    with np.errstate(divide='ignore', invalid='ignore'):
+    with np.errstate(divide="ignore", invalid="ignore"):
         mat_binned = np.divide(mat_binned, norm_binned, where=norm_binned > 0)
 
     # Move binned axis back to original location
