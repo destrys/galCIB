@@ -1,5 +1,5 @@
 import numpy as np
-import itertools 
+
 
 def bin_mat(r, mat, r_bins, axis=-1):
     """
@@ -40,7 +40,7 @@ def bin_mat(r, mat, r_bins, axis=-1):
     # Move axis to last for easier indexing
     mat = np.moveaxis(mat, axis, -1)  # shape becomes (..., Nr)
     orig_shape = mat.shape[:-1]
-    Nr = mat.shape[-1]
+    # Nr = mat.shape[-1]
 
     # Apply weights
     mat_w = mat * weights  # broadcasted multiplication

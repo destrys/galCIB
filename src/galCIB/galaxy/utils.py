@@ -1,5 +1,3 @@
-import numpy as np
-
 def evolving_log_mass(mu0, mup, z_over_1plusz):
     """
     Parametrize redshift evolution of log10 mass:

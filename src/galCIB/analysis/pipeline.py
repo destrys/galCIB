@@ -2,7 +2,6 @@ from scipy.integrate import simpson
 import numpy as np 
 
 from galCIB.utils import get_color_correction
-from .utils import bin_mat
 
 
 class AnalysisModel:

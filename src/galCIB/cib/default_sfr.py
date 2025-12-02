@@ -5,7 +5,6 @@ Contains the default SFR model based on 2006.16329
 """
 
 import numpy as np
-from galCIB.galaxy.utils import evolving_log_mass
 
 def sfr_default(BAR_grid, z_ratio):
     """

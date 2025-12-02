@@ -66,6 +66,7 @@ def compute_Pgg_1h(pkobj):
     
     return Pgg_1h
 
+# TODO: Unused? Remove?
 def compute_Pgmu_2h(pkobj):
     """
     Compute P_gm^2h (k,z) = P_lin(k,z)/nbar * [integral(HMF * [Nc+Ns*u]*bias*dlog10Mh)]

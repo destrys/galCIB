@@ -6,7 +6,7 @@ DESI Legacy Imaging Surveys galaxies.
 import numpy as np
 import scipy.special as ss
 from scipy.integrate import simpson
-import astropy.units as u 
+# import astropy.units as u 
 
 # import local modules
 from .. import consts
@@ -173,7 +173,7 @@ def get_Wmu(dict_gal, mag_bias_alpha):
     
     pz = dict_gal['pz']
     chi = consts.chi_list
-    Hz = consts.Hz_list
+    # Hz = consts.Hz_list
     
     # Eqn 6 of 1410.4502
     
@@ -258,7 +258,7 @@ def nbargal_halo(ncen, nsat, hmf):
     
     return nbar
     
-def galterm(params, u, gal_type = 'ELG'):
+def galterm(params, _u, gal_type = 'ELG'):
     """
     Returns the second bracket in A13 of 2204.05299.
     Form is (Nc + Ns * u(k, Mh, z)).
@@ -288,6 +288,6 @@ def galterm(params, u, gal_type = 'ELG'):
     Nc = Ncen(params_Nc, gal_type = gal_type) # (Mh,)
     Ns = Nsat(params_Ns, gal_type=gal_type) # (Mh,)
     
-    res = Nc[np.newaxis, :, :] + Ns[np.newaxis, :, :] * u
+    res = Nc[np.newaxis, :, :] + Ns[np.newaxis, :, :] * _u
     
     return res, Nc, Ns

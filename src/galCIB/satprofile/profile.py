@@ -4,7 +4,6 @@ of the satellite profile inside the halo.
 """
 
 import numpy as np 
-from colossus.lss import bias
 import warnings
 
 from .default_models import compute_unfw, compute_nfw_exp_mixed

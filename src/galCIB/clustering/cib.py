@@ -336,8 +336,9 @@ def convolve_with_Planck(seff):
         res = interp_func(filtfreq)
         return res
     
-    slice_interpolator = lambda z_idx, filtfreq: interp_slice(nu_primes[:,z_idx[0]], 
-                                               seff[:, z_idx[0]], filtfreq)
+    # slice_interpolator = lambda z_idx, filtfreq: interp_slice(nu_primes[:,z_idx[0]], 
+    #                                            seff[:, z_idx[0]], filtfreq)
+    slice_interpolator = None
     
     planck_nu_names = (planck_nu_list/ghz).astype(int)
     for i in range(len(planck_nu_names)):

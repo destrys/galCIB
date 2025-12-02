@@ -79,7 +79,7 @@ def nfwfourier_u(lambda_NFW, rad200, c, c_term):
         lambda_NFW : rescaling factor of rs
     """
     
-    rs_original = r_star(rad200, c)
+    #rs_original = r_star(rad200, c)
     rs_rescaled = r_star(rad200/lambda_NFW, c) #FIXME: does concentration change with rescaling?
     #FIXME: calculate q a priori and just divide by lambda to get q_rescaled
     q = kk[:, np.newaxis, :] * rs_rescaled[np.newaxis,:,:] # (k, Mh, z)
@@ -101,6 +101,7 @@ def nfwfourier_u(lambda_NFW, rad200, c, c_term):
     # return 0
     return unfw
 
+# TODO: This is defined twice in this file
 def ampl_nfw(c):
     """
     Dimensionless amplitude of the NFW profile.
@@ -280,8 +281,9 @@ def r_delta(delta_h = 200):
     res = r3**(1./3.)
     return res
 
+# TODO: This is defined twice in this file
 #FIXME: do we infer for c? 
-def ampl_nfw(c):
+def ampl_nfw_TWO(c):
     """
     Returns dimensionless amplitude of the NFW profile.
     

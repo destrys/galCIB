@@ -2,9 +2,9 @@
 Contains 1-halo and 2-halo term P(k) functions.
 """
 
-import numpy as np
 from scipy.integrate import simpson
-from .utils import ensure_nm_nz_shape, compute_Pgg_1h, compute_Pgg_2h, compute_PgI_1h, compute_PgI_2h, compute_PII_1h, compute_PII_2h, compute_Puv_tot, compute_Pgmu_2h, compute_Pmumu_2h
+from .utils import ensure_nm_nz_shape, compute_Pgg_1h, compute_Pgg_2h, compute_PgI_1h, compute_PgI_2h, compute_PII_1h, compute_PII_2h, compute_Puv_tot, compute_Pmumu_2h
+
 
 class PkBuilder:
     def __init__(self, hod_model, cib_model, gal_prof_model, cib_prof_model,
